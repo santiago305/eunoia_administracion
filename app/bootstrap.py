@@ -5,14 +5,13 @@ from __future__ import annotations
 import logging
 
 from browser import connect_browser_over_cdp
-from settings.settings import BASE, TARGET_CHAT_NAME
+from settings.settings import BASE
 
 from .browser_management import (
     BrowserSessionClosedError,
     prepare_context,
     prepare_primary_page,
 )
-from resoruces.chat_navigation import ConversationNotFoundError, open_conversation
 from .login_state import LoginState, monitor_login_state
 
 logger = logging.getLogger(__name__)
@@ -77,18 +76,7 @@ async def run(settings=None) -> None:  # noqa: D401 - firma heredada
     try:
         state = await monitor_login_state(page, logger_instance=logger)
         if state == LoginState.LOGGED_IN:
-            chat_title = TARGET_CHAT_NAME.strip()
-            if chat_title:
-                try:
-                    await open_conversation(page, chat_title, logger_instance=logger)
-                except ConversationNotFoundError as error:
-                    logger.error(
-                        "No fue posible abrir la conversación '%s': %s", chat_title, error
-                    )
-            else:
-                logger.info(
-                    "No se configuró un nombre de conversación objetivo. Se omite la navegación."
-                )
+            logger.info("Sesión autenticada en WhatsApp Web.")
     finally:
         logger.info("Monitor de sesión detenido. Chrome permanecerá abierto.")
         if browser_connection is not None:
