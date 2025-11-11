@@ -12,7 +12,7 @@ from .browser_management import (
     prepare_context,
     prepare_primary_page,
 )
-from ..resoruces.chat_navigation import ConversationNotFoundError, open_conversation
+from resoruces.chat_navigation import ConversationNotFoundError, open_conversation
 from .login_state import LoginState, monitor_login_state
 
 logger = logging.getLogger(__name__)

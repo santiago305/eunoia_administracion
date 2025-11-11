@@ -21,22 +21,44 @@ class ConversationNotFoundError(RuntimeError):
 class _ConversationSelectors:
     """Selectores relevantes para interactuar con la lista de chats."""
 
-    chat_list: str = "[data-testid='chat-list']"
-    search_container: str = "[data-testid='chat-list-search']"
-    search_input: str = "[contenteditable='true']"
+    chat_list: tuple[str, ...] = (
+        "[data-testid='chat-list']",
+        "div[aria-label='Lista de chats']",
+        "div[role='grid']",
+    )
+    search_container: tuple[str, ...] = (
+        "[data-testid='chat-list-search']",
+        "div._ai04",
+    )
+    search_input: tuple[str, ...] = (
+        "[data-testid='chat-list-search'] [contenteditable='true']",
+        "div[aria-label='Cuadro de texto para ingresar la búsqueda'][contenteditable='true']",
+        "div[aria-placeholder='Buscar un chat o iniciar uno nuevo'][contenteditable='true']",
+        "div[contenteditable='true'][role='textbox']",
+    )
+    search_button: tuple[str, ...] = (
+        "button[data-icon='search']",
+        "button[data-icon='search-alt']",
+        "button[data-icon='search-refreshed-thin']",
+        "div._ai04 button",
+    )
 
 
 async def _ensure_chat_list_ready(page: Page, selectors: _ConversationSelectors, *, timeout: float) -> None:
     """Espera a que la columna de chats esté disponible."""
 
-    try:
-        await page.locator(selectors.chat_list).first.wait_for(
-            state="visible", timeout=int(timeout * 1000)
-        )
-    except PlaywrightTimeoutError as exc:  # pragma: no cover - robustez
-        raise ConversationNotFoundError(
-            "No se pudo detectar la lista de conversaciones en el panel principal."
-        ) from exc
+    last_exc: PlaywrightTimeoutError | None = None
+    for selector in selectors.chat_list:
+        locator = page.locator(selector).first
+        try:
+            await locator.wait_for(state="visible", timeout=int(timeout * 1000))
+            return
+        except PlaywrightTimeoutError as exc:  # pragma: no cover - robustez
+            last_exc = exc
+
+    raise ConversationNotFoundError(
+        "No se pudo detectar la lista de conversaciones en el panel principal."
+    ) from last_exc
 
 
 async def _type_in_search(
@@ -48,23 +70,65 @@ async def _type_in_search(
 ) -> None:
     """Escribe el nombre de la conversación en la búsqueda lateral."""
 
-    container = page.locator(selectors.search_container).first
-    try:
-        await container.wait_for(state="visible", timeout=int(timeout * 1000))
-    except PlaywrightTimeoutError:
-        # La barra de búsqueda podría no existir (por ejemplo, interfaz reducida).
-        logger.debug("No se encontró la barra de búsqueda lateral. Se intentará sin filtrado.")
+    input_box: Locator | None = None
+
+    # Intentamos localizar el contenedor y el cuadro de búsqueda con distintos selectores.
+    for container_selector in selectors.search_container:
+        container = page.locator(container_selector).first
+        try:
+            await container.wait_for(state="visible", timeout=int(timeout * 1000))
+        except PlaywrightTimeoutError:
+            continue
+
+        for input_selector in selectors.search_input:
+            candidate = container.locator(input_selector).first
+            try:
+                await candidate.wait_for(state="visible", timeout=int(timeout * 1000))
+            except PlaywrightTimeoutError:
+                continue
+
+            input_box = candidate
+            break
+
+        if input_box:
+            break
+
+    if input_box is None:
+        # Intentamos localizar el cuadro de búsqueda de manera global como último recurso.
+        for input_selector in selectors.search_input:
+            candidate = page.locator(input_selector).first
+            try:
+                await candidate.wait_for(state="visible", timeout=int(timeout * 1000))
+            except PlaywrightTimeoutError:
+                continue
+            input_box = candidate
+            break
+
+    if input_box is None:
+        logger.debug(
+            "No se encontró un cuadro de texto para la búsqueda. Se continua sin filtrar."
+        )
         return
 
-    input_box: Locator = container.locator(selectors.search_input).first
-    try:
-        await input_box.wait_for(state="visible", timeout=int(timeout * 1000))
-    except PlaywrightTimeoutError:
-        logger.debug("No se encontró un cuadro de texto para la búsqueda. Se continua sin filtrar.")
-        return
+    # Algunas interfaces requieren activar el cuadro de búsqueda mediante un botón previo.
+    if not await input_box.is_enabled():
+        for button_selector in selectors.search_button:
+            button = page.locator(button_selector).first
+            try:
+                await button.click()
+            except Exception:  # pragma: no cover - intento de robustez
+                continue
+            if await input_box.is_enabled():
+                break
 
     await input_box.click()
-    await input_box.fill("")
+    try:
+        await input_box.fill("")
+    except Exception:
+        # Algunos cuadros basados en contenteditable no soportan ``fill``.
+        await input_box.press("Control+A")
+        await input_box.press("Backspace")
+
     await input_box.type(conversation_title, delay=50)
 
 
