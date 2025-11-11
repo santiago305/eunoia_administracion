@@ -24,7 +24,7 @@ async def run(settings=None) -> None:  # noqa: D401 - firma heredada
     del settings  # parámetro reservado para compatibilidad
 
     logging.basicConfig(level=logging.INFO)
-    logger.debug("Conectando con Chrome existente mediante CDP...")
+    logger.info("Conectando con Chrome existente mediante CDP...")
 
     # Intentamos conectar con una instancia existente de Chrome mediante CDP.
     browser_connection = await connect_browser_over_cdp()
@@ -35,7 +35,7 @@ async def run(settings=None) -> None:  # noqa: D401 - firma heredada
         )
         return
 
-    logger.debug("Conexión establecida con Chrome mediante CDP.")
+    logger.info("Conexión establecida con Chrome mediante CDP.")
 
     # Normalizamos el contexto y la página principal para garantizar un entorno limpio.
     attempt = 0
@@ -72,12 +72,12 @@ async def run(settings=None) -> None:  # noqa: D401 - firma heredada
             continue
 
     await page.goto(f"{BASE}/", wait_until="domcontentloaded")
-    logger.debug("WhatsApp Web abierto. Supervisando el estado de inicio de sesión...")
+    logger.info("WhatsApp Web abierto. Supervisando el estado de inicio de sesión...")
 
     try:
         await monitor_login_state(page, logger_instance=logger)
     finally:
-        logger.debug("Monitor de sesión detenido. Chrome permanecerá abierto.")
+        logger.info("Monitor de sesión detenido. Chrome permanecerá abierto.")
         if browser_connection is not None:
             await browser_connection.close()
         logger.info("Trabajo terminado.")

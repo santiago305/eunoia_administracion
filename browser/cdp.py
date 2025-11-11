@@ -124,15 +124,16 @@ async def connect_browser_over_cdp() -> Optional[BrowserConnection]:
                     await page.close()
                 await extra_context.close()
 
-            # Asegura que solo quede una pestaña en el contexto principal.
-            # Cierra todas las pestañas existentes en el contexto principal y crea una nueva.
-            for page in list(primary_context.pages):
+             # Nos aseguramos de que exista al menos una pestaña utilizable.
+            has_open_page = any(not page.is_closed() for page in primary_context.pages)
+            if not has_open_page:
                 try:
-                    await page.close()
+                    await primary_context.new_page()
                 except Exception as page_error:
-                    print(f"[CDP] Advertencia al cerrar pestaña: {page_error}")
-
-            await primary_context.new_page()
+                    print(
+                        "[CDP] Advertencia al preparar pestaña principal: "
+                        f"{page_error}"
+                    )
 
         except Exception as cleanup_error:
             print(f"[CDP] Advertencia al normalizar pestañas: {cleanup_error}")
