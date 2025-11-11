@@ -7,7 +7,11 @@ import logging
 from browser import connect_browser_over_cdp
 from settings.settings import BASE
 
-from .browser_management import prepare_context, prepare_primary_page
+from .browser_management import (
+    BrowserSessionClosedError,
+    prepare_context,
+    prepare_primary_page,
+)
 from .login_state import monitor_login_state
 
 
@@ -33,11 +37,39 @@ async def run(settings=None) -> None:  # noqa: D401 - firma heredada
 
     logger.debug("Conexión establecida con Chrome mediante CDP.")
 
-    browser = browser_connection.browser
-
     # Normalizamos el contexto y la página principal para garantizar un entorno limpio.
-    context = await prepare_context(browser)
-    page = await prepare_primary_page(context)
+    attempt = 0
+    max_attempts = 2
+    while True:
+        attempt += 1
+        browser = browser_connection.browser
+        try:
+            context = await prepare_context(browser)
+            context, page = await prepare_primary_page(context)
+            break
+        except BrowserSessionClosedError:
+            logger.warning(
+                "Se perdió la conexión con Chrome. Intentando reconectar (%d/%d)...",
+                attempt,
+                max_attempts,
+            )
+            await browser_connection.close()
+            browser_connection = None
+            if attempt >= max_attempts:
+                logger.error(
+                    "No fue posible restablecer la sesión con Chrome en modo depuración."
+                )
+                return
+
+            new_connection = await connect_browser_over_cdp()
+            if new_connection is None:
+                logger.error(
+                    "No se pudo reconectar con el navegador Chrome en modo depuración remota."
+                )
+                return
+            browser_connection = new_connection
+            logger.info("Reconexión con Chrome exitosa.")
+            continue
 
     await page.goto(f"{BASE}/", wait_until="domcontentloaded")
     logger.debug("WhatsApp Web abierto. Supervisando el estado de inicio de sesión...")
@@ -46,7 +78,8 @@ async def run(settings=None) -> None:  # noqa: D401 - firma heredada
         await monitor_login_state(page, logger_instance=logger)
     finally:
         logger.debug("Monitor de sesión detenido. Chrome permanecerá abierto.")
-        await browser_connection.close()
+        if browser_connection is not None:
+            await browser_connection.close()
         logger.info("Trabajo terminado.")
 
 __all__ = ["run"]
