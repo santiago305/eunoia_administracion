@@ -30,11 +30,26 @@ async def close_extra_pages(context: BrowserContext, keep: Page) -> None:
         await asyncio.gather(*tasks)
 
 
-async def prepare_context(browser: Browser) -> BrowserContext:
-    """Devuelve el contexto principal del navegador, creando uno si hiciera falta."""
+def _context_is_active(context: BrowserContext) -> bool:
+    """True si el contexto sigue operativo según los indicadores internos."""
 
-    if browser.contexts:
-        return browser.contexts[0]
+    impl = getattr(context, "_impl_obj", None)
+    if impl is None:
+        return True
+
+    closing_or_closed = getattr(impl, "_closing_or_closed", None)
+    if closing_or_closed is None:
+        return True
+
+    return not closing_or_closed
+
+
+async def prepare_context(browser: Browser) -> BrowserContext:
+    """Devuelve un contexto activo o crea uno nuevo si los existentes están cerrados."""
+
+    for context in browser.contexts:
+        if _context_is_active(context):
+            return context
 
     return await browser.new_context()
 
@@ -43,8 +58,9 @@ async def prepare_primary_page(context: BrowserContext) -> Page:
     """Obtiene la página principal lista para trabajar o crea una nueva."""
 
     page: Page
-    if context.pages:
-        page = context.pages[0]
+    open_pages = [page for page in context.pages if not page.is_closed()]
+    if open_pages:
+        page = open_pages[0]
         # Limpiamos ventanas sobrantes para evitar interferencias con la automatización.
         await close_extra_pages(context, page)
     else:

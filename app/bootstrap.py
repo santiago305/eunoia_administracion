@@ -1,6 +1,3 @@
-+9
--3
-
 """Secuencia de arranque simplificada de la aplicación CLI."""
 
 from __future__ import annotations
@@ -51,6 +48,5 @@ async def run(settings=None) -> None:  # noqa: D401 - firma heredada
         logger.debug("Monitor de sesión detenido. Chrome permanecerá abierto.")
         await browser_connection.close()
         logger.info("Trabajo terminado.")
-
 
 __all__ = ["run"]
