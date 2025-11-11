@@ -2,151 +2,16 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
-from enum import Enum
-from typing import Iterable
-
-from playwright.async_api import (
-    Browser,
-    BrowserContext,
-    Error as PlaywrightError,
-    Locator,
-    Page,
-)
 
 from browser import connect_browser_over_cdp
 from settings.settings import BASE
 
+from .browser_management import prepare_context, prepare_primary_page
+from .login_state import monitor_login_state
+
 
 logger = logging.getLogger(__name__)
-
-
-async def _close_extra_pages(context: BrowserContext, keep: Page) -> None:
-    """Close every page in *context* except for *keep*."""
-
-    async def _close_page(page: Page) -> None:
-        try:
-            await page.close()
-        except Exception:  # pragma: no cover - logging side effect
-            logger.exception("No se pudo cerrar una ventana adicional")
-
-    to_close: Iterable[Page] = (
-        page for page in context.pages if page != keep and not page.is_closed()
-    )
-    tasks = [asyncio.create_task(_close_page(page)) for page in to_close]
-    if tasks:
-        logger.info("Cerrando %d ventana(s) adicionales detectadas", len(tasks))
-        await asyncio.gather(*tasks)
-
-
-class LoginState(Enum):
-    """Posibles estados de autenticación en WhatsApp Web."""
-
-    UNKNOWN = "unknown"
-    LOGGED_OUT = "logged_out"
-    LOGGED_IN = "logged_in"
-
-
-LOGIN_PROMPT_TEXTS = (
-    "Pasos para iniciar sesión",
-    "Vincular con el número de teléfono",
-    "Iniciar sesión con número de teléfono",
-)
-
-LOGGED_IN_XPATHS = (
-    "//*[@id='app']/div[1]/div/div[3]",
-    "//*[@id='app']/div[1]/div/div[3]/div/div[4]",
-    "//*[@id='app']/div[1]/div/div[3]/div/div[5]",
-)
-
-
-async def _locator_is_visible(locator: Locator) -> bool:
-    """Return ``True`` when the ``locator`` is visible, ``False`` otherwise."""
-
-    try:
-        return await locator.is_visible()
-    except PlaywrightError:
-        return False
-
-
-async def _detect_login_state(page: Page) -> LoginState:
-    """Intenta determinar si la sesión de WhatsApp Web está activa."""
-
-    for xpath in LOGGED_IN_XPATHS:
-        locator = page.locator(f"xpath={xpath}")
-        if await _locator_is_visible(locator):
-            return LoginState.LOGGED_IN
-
-    for text in LOGIN_PROMPT_TEXTS:
-        locator = page.get_by_text(text, exact=True)
-        if await _locator_is_visible(locator):
-            return LoginState.LOGGED_OUT
-
-    return LoginState.UNKNOWN
-
-
-async def _monitor_login_state(
-    page: Page,
-    check_interval: float = 15.0,
-    prompt_interval: float = 10.0,
-) -> None:
-    """Supervisa el estado de sesión e informa cuando cambia."""
-
-    last_state: LoginState | None = None
-    prompt_task: asyncio.Task[None] | None = None
-
-    async def _prompt_loop() -> None:
-        while True:
-            logger.info("Escanea el QR para loguearte.")
-            await asyncio.sleep(prompt_interval)
-
-    async def _ensure_prompt_running() -> None:
-        nonlocal prompt_task
-        if prompt_task is None or prompt_task.done():
-            prompt_task = asyncio.create_task(_prompt_loop())
-
-    async def _stop_prompt() -> None:
-        nonlocal prompt_task
-        if prompt_task is not None:
-            prompt_task.cancel()
-            try:
-                await prompt_task
-            except asyncio.CancelledError:
-                pass
-            prompt_task = None
-
-    while True:
-        state = await _detect_login_state(page)
-        if state != last_state:
-            if state == LoginState.LOGGED_IN:
-                logger.info("Te has logueado correctamente.")
-            elif state == LoginState.LOGGED_OUT:
-                logger.info("No se ha iniciado sesión en WhatsApp Web.")
-            else:
-                logger.info(
-                    "Aún no se puede determinar el estado de la sesión. Continuaremos verificando..."
-                )
-            last_state = state
-
-        if state == LoginState.LOGGED_IN:
-            await _stop_prompt()
-            return
-        if state == LoginState.LOGGED_OUT:
-            await _ensure_prompt_running()
-        else:
-            await _stop_prompt()
-
-        await asyncio.sleep(check_interval)
-
-
-async def _prepare_context(browser: Browser) -> BrowserContext:
-    """Obtiene un contexto utilizable, creando uno nuevo si es necesario."""
-
-    if browser.contexts:
-        return browser.contexts[0]
-
-    return await browser.new_context()
 
 
 async def run(settings=None) -> None:  # noqa: D401 - firma heredada
@@ -167,21 +32,14 @@ async def run(settings=None) -> None:  # noqa: D401 - firma heredada
 
     logger.debug("Conexión establecida con Chrome mediante CDP.")
 
-    context = await _prepare_context(browser)
+    context = await prepare_context(browser)
+    page = await prepare_primary_page(context)
 
-    page: Page
-    if context.pages:
-        page = context.pages[0]
-        await _close_extra_pages(context, page)
-    else:
-        page = await context.new_page()
-
-    await page.bring_to_front()
     await page.goto(f"{BASE}/", wait_until="domcontentloaded")
     logger.debug("WhatsApp Web abierto. Supervisando el estado de inicio de sesión...")
 
     try:
-        await _monitor_login_state(page)
+        await monitor_login_state(page, logger_instance=logger)
     finally:
         logger.debug("Monitor de sesión detenido. Chrome permanecerá abierto.")
 

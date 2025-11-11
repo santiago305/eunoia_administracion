@@ -6,7 +6,7 @@ from urllib.parse import urlparse, urlunparse
 
 from playwright.async_api import Browser, async_playwright
 
-from settings import settings
+from settings import CDP_ENDPOINT
 
 _PORT_METADATA_FILE = Path(__file__).resolve().parent.parent / "scripts" / "chrome_cdp_port.txt"
 
@@ -41,7 +41,7 @@ def _port_from_metadata() -> Optional[int]:
 def _resolve_cdp_endpoint() -> str:
     """Combina ``settings.CDP_ENDPOINT`` con el puerto registrado, si existe."""
 
-    endpoint = (settings.CDP_ENDPOINT or "").strip() or "http://127.0.0.1:9222"
+    endpoint = (CDP_ENDPOINT or "").strip() or "http://127.0.0.1:9222"
     override_port = _port_from_metadata()
 
     if override_port is None:
