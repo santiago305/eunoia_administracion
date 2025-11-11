@@ -68,5 +68,8 @@ class BrowserConfig:
 
 CDP_ENDPOINT: str = _get_any(["CDP_ENDPOINT"], "http://127.0.0.1:9222")
 BASE: str = _get_any(["BASE"], "https://web.whatsapp.com/").strip().rstrip("/")
+TARGET_CHAT_NAME: str = _get_any(
+    ["TARGET_CHAT_NAME", "WHATSAPP_TARGET_CHAT"], "Comprobantes Eunoia"
+).strip()
 
 BROWSER = BrowserConfig(cdp_endpoint=CDP_ENDPOINT, base_url=BASE)
