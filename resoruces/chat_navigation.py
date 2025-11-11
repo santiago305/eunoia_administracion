@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from dataclasses import dataclass
 
@@ -35,6 +36,8 @@ class _ConversationSelectors:
         "div[aria-label='Cuadro de texto para ingresar la búsqueda'][contenteditable='true']",
         "div[aria-placeholder='Buscar un chat o iniciar uno nuevo'][contenteditable='true']",
         "div[contenteditable='true'][role='textbox']",
+        "div[role='textbox'][tabindex='0']",
+        "div[role='textbox'][tabindex='-1']",
     )
     search_button: tuple[str, ...] = (
         "button[data-icon='search']",
@@ -42,6 +45,7 @@ class _ConversationSelectors:
         "button[data-icon='search-refreshed-thin']",
         "div._ai04 button",
     )
+
 
 
 async def _ensure_chat_list_ready(page: Page, selectors: _ConversationSelectors, *, timeout: float) -> None:
@@ -122,14 +126,51 @@ async def _type_in_search(
                 break
 
     await input_box.click()
+    
     try:
         await input_box.fill("")
     except Exception:
         # Algunos cuadros basados en contenteditable no soportan ``fill``.
-        await input_box.press("Control+A")
-        await input_box.press("Backspace")
+        try:
+            await input_box.press("Control+A")
+            await input_box.press("Backspace")
+        except Exception:
+            await input_box.evaluate(
+                "(element) => {"
+                "  if (!(element instanceof HTMLElement)) {"
+                "    return;"
+                "  }"
+                "  element.innerText = '';"
+                "  element.textContent = '';"
+                "  const InputEvt = typeof InputEvent === 'function' ? InputEvent : Event;"
+                "  element.dispatchEvent(new InputEvt('input', { bubbles: true }));"
+                "}"
+            )
 
-    await input_box.type(conversation_title, delay=50)
+    typed = False
+    try:
+        await input_box.type(conversation_title, delay=50)
+        typed = True
+    except Exception:
+        pass
+
+    if not typed:
+        await input_box.evaluate(
+            "(element, value) => {"
+            "  if (!(element instanceof HTMLElement)) {"
+            "    return;"
+            "  }"
+            "  element.focus();"
+            "  element.innerText = value;"
+            "  element.textContent = value;"
+            "  const InputEvt = typeof InputEvent === 'function' ? InputEvent : Event;"
+            "  element.dispatchEvent(new InputEvt('input', { bubbles: true }));"
+            "}",
+            conversation_title,
+        )
+
+    # Permitimos que la interfaz procese los resultados de búsqueda antes de continuar.
+    await asyncio.sleep(2)
 
 
 async def _click_conversation(
