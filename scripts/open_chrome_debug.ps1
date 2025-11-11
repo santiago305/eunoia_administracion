@@ -48,7 +48,7 @@ if ($hasEnv) {
 
 # Si no hay URL, usar la predeterminada sin pedir interacción
 if (-not $Url) {
-  $Url = "https://fuvexbn.a365.com.pe:7443/index.php"
+  $Url = "https://web.whatsapp.com/"
   Write-Host ("No se proporcionó LOGIN_URL ni parámetro -Url. Usando URL predeterminada: {0}" -f $Url) -ForegroundColor Yellow
 }
 
@@ -95,5 +95,5 @@ $UserData | Out-File -Encoding ascii -Force $profFile
 
 Write-Host ("`n>>> Chrome abierto (PID {0}) en puerto {1}, perfil '{2}'." -f $proc.Id, $Port, $UserData)
 Write-Host (">>> Se abrió: {0}" -f $Url)
-Write-Host ">>> Ingresa tu usuario/contraseña y resuelve el CAPTCHA normalmente."
+Write-Host ">>> Automatizacion puede conectarse a CDP en este puerto."
 exit 0

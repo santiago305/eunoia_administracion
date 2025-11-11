@@ -12,7 +12,7 @@ if errorlevel 1 (
 )
 
 echo.
-echo [1/3] Preparando Chrome (CDP) para login automatico...
+echo [1/3] Preparando Chrome (CDP)...
 powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\open_chrome_debug.ps1"
 if errorlevel 1 (
   echo [ERROR] No se pudo abrir Chrome.

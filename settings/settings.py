@@ -44,26 +44,6 @@ APP_ENV: str = _get_any(["APP_ENV", "ENVIRONMENT"], "production").strip().lower(
 def getenv(key: str, default: str = "") -> str:
     return _get_any([key], default)
 
-def _excel_tree_user() -> str:
-    return _get_any(["EXCELS_USER_NAME", "USER_NAME"], "").strip()
-
-
-def _excel_tree_default(relative: str, *, scope: str = "user") -> str:
-    base = _get_any(["EXCELS_BASE_PATH"], "").strip()
-    if not base:
-        return ""
-
-    root = Path(base).expanduser()
-
-    if scope == "user":
-        user = _excel_tree_user()
-        if not user:
-            return ""
-        root = root / user
-
-    return str(root / relative)
-
-
 
 def getint(key: str, default: int) -> int:
     return int(getenv(key, str(default)))
@@ -75,4 +55,4 @@ def getbool(key: str, default: bool = False) -> bool:
 # ================== BASE ==================
 CDP_ENDPOINT: str = _get_any(["CDP_ENDPOINT"], "http://127.0.0.1:9222")
 
-FUVEX_BASE: str = _get_any(["FUVEX_BASE"], "https://fuvexbn.a365.com.pe:7443").strip().rstrip("/")
+BASE: str = _get_any(["BASE"], "https://web.whatsapp.com/").strip().rstrip("/")
