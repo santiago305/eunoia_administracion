@@ -14,7 +14,7 @@ param(
 $ErrorActionPreference = "Stop"
 
 # Defaults
-if (-not $Port)     { $Port = 9227 }
+if (-not $Port)     { $Port = 9222 }
 if (-not $UserData) { $UserData = "C:\chrome-fuvex" }
 
 $projRoot = Split-Path -Parent $PSScriptRoot

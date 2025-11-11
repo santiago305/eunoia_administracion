@@ -1,8 +1,78 @@
+from __future__ import annotations
+
+from pathlib import Path
 from typing import Optional
+from urllib.parse import urlparse, urlunparse
 
 from playwright.async_api import Browser, async_playwright
 
-from ..settings import settings
+from settings import settings
+
+_PORT_METADATA_FILE = Path(__file__).resolve().parent.parent / "scripts" / "chrome_cdp_port.txt"
+
+
+def _port_from_metadata() -> Optional[int]:
+    """Lee el puerto usado por ``open_chrome_debug.ps1`` si está disponible."""
+
+    try:
+        text = _PORT_METADATA_FILE.read_text(encoding="utf-8").strip()
+    except FileNotFoundError:
+        return None
+    except OSError as exc:
+        print(f"[CDP] Advertencia al leer el puerto registrado: {exc}")
+        return None
+
+    if not text:
+        return None
+
+    try:
+        port = int(text)
+    except ValueError:
+        print(f"[CDP] Valor de puerto inválido en {_PORT_METADATA_FILE}: '{text}'")
+        return None
+
+    if port <= 0 or port > 65535:
+        print(f"[CDP] Puerto fuera de rango en {_PORT_METADATA_FILE}: {port}")
+        return None
+
+    return port
+
+
+def _resolve_cdp_endpoint() -> str:
+    """Combina ``settings.CDP_ENDPOINT`` con el puerto registrado, si existe."""
+
+    endpoint = (settings.CDP_ENDPOINT or "").strip() or "http://127.0.0.1:9222"
+    override_port = _port_from_metadata()
+
+    if override_port is None:
+        return endpoint
+
+    parsed = urlparse(endpoint if "://" in endpoint else f"http://{endpoint}")
+
+    scheme = parsed.scheme or "http"
+    path = parsed.path or ""
+    params = parsed.params or ""
+    query = parsed.query or ""
+    fragment = parsed.fragment or ""
+
+    hostname = parsed.hostname or "127.0.0.1"
+    userinfo = ""
+    if parsed.username:
+        userinfo = parsed.username
+        if parsed.password:
+            userinfo = f"{userinfo}:{parsed.password}"
+
+    netloc = hostname
+    if userinfo:
+        netloc = f"{userinfo}@{netloc}"
+    netloc = f"{netloc}:{override_port}"
+
+    resolved = urlunparse((scheme, netloc, path, params, query, fragment))
+    print(
+        "[CDP] Puerto detectado en scripts/open_chrome_debug.ps1: "
+        f"{override_port}. Endpoint resuelto: {resolved}"
+    )
+    return resolved
 
 
 async def connect_browser_over_cdp() -> Optional[Browser]:
@@ -10,9 +80,12 @@ async def connect_browser_over_cdp() -> Optional[Browser]:
     Conecta a Chrome ya abierto con --remote-debugging-port.
     Lanza primero scripts/open_chrome_debug.ps1 y loguéate manualmente.
     """
+
+    pw = None
     try:
         pw = await async_playwright().start()
-        browser = await pw.chromium.connect_over_cdp(settings.CDP_ENDPOINT)
+        endpoint = _resolve_cdp_endpoint()
+        browser = await pw.chromium.connect_over_cdp(endpoint)
 
         try:
             contexts = list(browser.contexts)
@@ -45,4 +118,9 @@ async def connect_browser_over_cdp() -> Optional[Browser]:
         return browser
     except Exception as e:
         print(f"[CDP] Error al conectar: {e}")
+        if pw is not None:
+            try:
+                await pw.stop()
+            except Exception as stop_error:
+                print(f"[CDP] Advertencia al detener Playwright tras un error: {stop_error}")
         return None

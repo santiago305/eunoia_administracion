@@ -86,26 +86,58 @@ async def _detect_login_state(page: Page) -> LoginState:
     return LoginState.UNKNOWN
 
 
-async def _monitor_login_state(page: Page, interval: float = 15.0) -> None:
+async def _monitor_login_state(
+    page: Page,
+    check_interval: float = 15.0,
+    prompt_interval: float = 10.0,
+) -> None:
     """Supervisa el estado de sesión e informa cuando cambia."""
 
     last_state: LoginState | None = None
+    prompt_task: asyncio.Task[None] | None = None
+
+    async def _prompt_loop() -> None:
+        while True:
+            logger.info("Escanea el QR para loguearte.")
+            await asyncio.sleep(prompt_interval)
+
+    async def _ensure_prompt_running() -> None:
+        nonlocal prompt_task
+        if prompt_task is None or prompt_task.done():
+            prompt_task = asyncio.create_task(_prompt_loop())
+
+    async def _stop_prompt() -> None:
+        nonlocal prompt_task
+        if prompt_task is not None:
+            prompt_task.cancel()
+            try:
+                await prompt_task
+            except asyncio.CancelledError:
+                pass
+            prompt_task = None
+
     while True:
         state = await _detect_login_state(page)
         if state != last_state:
             if state == LoginState.LOGGED_IN:
-                logger.info("Gracias por la espera. ¡La sesión de WhatsApp Web está iniciada!")
+                logger.info("Te has logueado correctamente.")
             elif state == LoginState.LOGGED_OUT:
-                logger.info(
-                    "No se ha iniciado sesión en WhatsApp Web. Por favor, escanea el código QR para continuar."
-                )
+                logger.info("No se ha iniciado sesión en WhatsApp Web.")
             else:
                 logger.info(
                     "Aún no se puede determinar el estado de la sesión. Continuaremos verificando..."
                 )
             last_state = state
 
-        await asyncio.sleep(interval)
+        if state == LoginState.LOGGED_IN:
+            await _stop_prompt()
+            return
+        if state == LoginState.LOGGED_OUT:
+            await _ensure_prompt_running()
+        else:
+            await _stop_prompt()
+
+        await asyncio.sleep(check_interval)
 
 
 async def _prepare_context(browser: Browser) -> BrowserContext:
@@ -132,6 +164,8 @@ async def run(settings=None) -> None:  # noqa: D401 - firma heredada
             "Asegúrate de ejecutar scripts/open_chrome_debug.ps1 antes de iniciar la app."
         )
         return
+
+    logger.info("Conexión establecida con Chrome mediante CDP.")
 
     context = await _prepare_context(browser)
 
