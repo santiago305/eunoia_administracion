@@ -1,16 +1,33 @@
-+15
--156
-
 """Secuencia de arranque simplificada de la aplicación CLI."""
 
 from __future__ import annotations
 
+import asyncio
 import logging
+from typing import Iterable
 
-from playwright.async_api import async_playwright
+from playwright.async_api import BrowserContext, Page, async_playwright
 
 
 logger = logging.getLogger(__name__)
+
+
+async def _close_extra_pages(context: BrowserContext, keep: Page) -> None:
+    """Close every page in *context* except for *keep*."""
+
+    async def _close_page(page: Page) -> None:
+        try:
+            await page.close()
+        except Exception:  # pragma: no cover - logging side effect
+            logger.exception("No se pudo cerrar una ventana adicional")
+
+    to_close: Iterable[Page] = (
+        page for page in context.pages if page != keep and not page.is_closed()
+    )
+    tasks = [asyncio.create_task(_close_page(page)) for page in to_close]
+    if tasks:
+        logger.info("Cerrando %d ventana(s) adicionales detectadas", len(tasks))
+        await asyncio.gather(*tasks)
 
 
 async def run(settings=None) -> None:  # noqa: D401 - firma heredada
@@ -19,16 +36,8 @@ async def run(settings=None) -> None:  # noqa: D401 - firma heredada
     logging.basicConfig(level=logging.INFO)
     logger.info("Iniciando navegador...")
 
-    async with async_playwright() as playwright:
-        browser = await playwright.chromium.launch(headless=False)
-        context = await browser.new_context()
-        page = await context.new_page()
-
-        logger.info("Navegador abierto.")
-        print("Hola mundo")
-
-        # Mantén la ventana viva brevemente para evitar que se cierre de inmediato.
-        await page.wait_for_timeout(10000)
+    page = await BrowserContext.new_page()
+    await page.wait_for_timeout(10000)
 
 
 __all__ = ["run"]
