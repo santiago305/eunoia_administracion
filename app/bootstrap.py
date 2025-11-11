@@ -13,6 +13,7 @@ from .browser_management import (
     prepare_primary_page,
 )
 from .login_state import LoginState, monitor_login_state
+from .chat_navigation import ChatNavigationError, open_chat
 
 logger = logging.getLogger(__name__)
 
@@ -77,6 +78,14 @@ async def run(settings=None) -> None:  # noqa: D401 - firma heredada
         state = await monitor_login_state(page, logger_instance=logger)
         if state == LoginState.LOGGED_IN:
             logger.info("Sesión autenticada en WhatsApp Web.")
+            try:
+                await open_chat(page, "Comprobantes Eunoia")
+            except ChatNavigationError as navigation_error:
+                logger.error(str(navigation_error))
+            else:
+                logger.info(
+                    "Navegación al chat 'Comprobantes Eunoia' finalizada correctamente."
+                )
     finally:
         logger.info("Monitor de sesión detenido. Chrome permanecerá abierto.")
         if browser_connection is not None:
