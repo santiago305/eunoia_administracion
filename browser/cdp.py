@@ -1,16 +1,42 @@
++34
+-8
+
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 from urllib.parse import urlparse, urlunparse
 
-from playwright.async_api import Browser, async_playwright
+from playwright.async_api import Browser, Playwright, async_playwright
 
 from settings import CDP_ENDPOINT
 
 _PORT_METADATA_FILE = Path(__file__).resolve().parent.parent / "scripts" / "chrome_cdp_port.txt"
 
 
+@dataclass
+class BrowserConnection:
+    """Agrupa el navegador conectado y el objeto de Playwright para su limpieza."""
+
+    browser: Browser
+    playwright: Playwright
+
+    async def close(self) -> None:
+        """Cierra la conexión con Chrome y detiene Playwright de forma segura."""
+
+        try:
+            # Cerramos la sesión de CDP mantenida por Playwright sin finalizar Chrome.
+            await self.browser.close()
+        except Exception as close_error:
+            print(f"[CDP] Advertencia al cerrar el navegador conectado: {close_error}")
+        finally:
+            try:
+                # Garantizamos la liberación del proceso auxiliar de Playwright.
+                await self.playwright.stop()
+            except Exception as stop_error:
+                print(f"[CDP] Advertencia al detener Playwright: {stop_error}")
+                
 def _port_from_metadata() -> Optional[int]:
     """Lee el puerto usado por ``open_chrome_debug.ps1`` si está disponible."""
 
@@ -75,11 +101,9 @@ def _resolve_cdp_endpoint() -> str:
     return resolved
 
 
-async def connect_browser_over_cdp() -> Optional[Browser]:
-    """
-    Conecta a Chrome ya abierto con --remote-debugging-port.
-    Lanza primero scripts/open_chrome_debug.ps1 y loguéate manualmente.
-    """
+async def connect_browser_over_cdp() -> Optional[BrowserConnection]:
+    """Establece una sesión CDP contra un Chrome ya abierto."""
+
 
     pw = None
     try:
@@ -88,6 +112,7 @@ async def connect_browser_over_cdp() -> Optional[Browser]:
         browser = await pw.chromium.connect_over_cdp(endpoint)
 
         try:
+            # Obtenemos los contextos existentes para reutilizarlos en caso de ser posible.
             contexts = list(browser.contexts)
 
             if not contexts:
@@ -115,7 +140,8 @@ async def connect_browser_over_cdp() -> Optional[Browser]:
         except Exception as cleanup_error:
             print(f"[CDP] Advertencia al normalizar pestañas: {cleanup_error}")
 
-        return browser
+        # Devolvemos una estructura que facilita el cierre correcto al finalizar.
+        return BrowserConnection(browser=browser, playwright=pw)
     except Exception as e:
         print(f"[CDP] Error al conectar: {e}")
         if pw is not None:
@@ -124,3 +150,6 @@ async def connect_browser_over_cdp() -> Optional[Browser]:
             except Exception as stop_error:
                 print(f"[CDP] Advertencia al detener Playwright tras un error: {stop_error}")
         return None
+
+
+__all__ = ["BrowserConnection", "connect_browser_over_cdp"]

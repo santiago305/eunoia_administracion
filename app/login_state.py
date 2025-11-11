@@ -35,7 +35,7 @@ DEFAULT_LOGGED_IN_XPATHS: Sequence[str] = (
 
 
 async def _locator_is_visible(locator: Locator) -> bool:
-    """Return ``True`` when the ``locator`` is visible, ``False`` otherwise."""
+    """Devuelve ``True`` cuando el elemento es visible y ``False`` en caso contrario."""
 
     try:
         return await locator.is_visible()
@@ -51,11 +51,13 @@ async def detect_login_state(
 ) -> LoginState:
     """Intenta determinar si la sesión de WhatsApp Web está activa."""
 
+    # Revisamos los posibles selectores que indican una sesión activa.
     for xpath in logged_in_xpaths:
         locator = page.locator(f"xpath={xpath}")
         if await _locator_is_visible(locator):
             return LoginState.LOGGED_IN
 
+    # Si no hay sesión activa, buscamos textos del asistente de inicio de sesión.
     for text in prompt_texts:
         locator = page.get_by_text(text, exact=True)
         if await _locator_is_visible(locator):
@@ -79,6 +81,7 @@ async def monitor_login_state(
     logger_to_use = logger_instance or logger
 
     async def _prompt_loop() -> None:
+        # Mientras la sesión siga pendiente, recordamos al usuario escanear el QR.
         while True:
             logger_to_use.info(prompt_message)
             await asyncio.sleep(prompt_interval)
@@ -119,6 +122,7 @@ async def monitor_login_state(
         else:
             await _stop_prompt()
 
+        # Esperamos el intervalo configurado antes de volver a comprobar el estado.
         await asyncio.sleep(check_interval)
 
 

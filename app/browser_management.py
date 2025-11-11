@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 
 async def close_extra_pages(context: BrowserContext, keep: Page) -> None:
-    """Close every page in *context* except for *keep*."""
+    """Cierra todas las páginas del contexto excepto la que necesitamos conservar."""
 
     async def _close_page(page: Page) -> None:
         try:
@@ -31,7 +31,7 @@ async def close_extra_pages(context: BrowserContext, keep: Page) -> None:
 
 
 async def prepare_context(browser: Browser) -> BrowserContext:
-    """Return the primary context from *browser*, creating one if needed."""
+    """Devuelve el contexto principal del navegador, creando uno si hiciera falta."""
 
     if browser.contexts:
         return browser.contexts[0]
@@ -40,15 +40,17 @@ async def prepare_context(browser: Browser) -> BrowserContext:
 
 
 async def prepare_primary_page(context: BrowserContext) -> Page:
-    """Return a ready-to-use page, creating one when necessary."""
+    """Obtiene la página principal lista para trabajar o crea una nueva."""
 
     page: Page
     if context.pages:
         page = context.pages[0]
+        # Limpiamos ventanas sobrantes para evitar interferencias con la automatización.
         await close_extra_pages(context, page)
     else:
         page = await context.new_page()
 
+    # Traemos la pestaña al frente para que el usuario vea el proceso en curso.
     await page.bring_to_front()
     return page
 

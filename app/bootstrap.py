@@ -1,3 +1,6 @@
++9
+-3
+
 """Secuencia de arranque simplificada de la aplicación CLI."""
 
 from __future__ import annotations
@@ -22,8 +25,9 @@ async def run(settings=None) -> None:  # noqa: D401 - firma heredada
     logging.basicConfig(level=logging.INFO)
     logger.debug("Conectando con Chrome existente mediante CDP...")
 
-    browser = await connect_browser_over_cdp()
-    if browser is None:
+    # Intentamos conectar con una instancia existente de Chrome mediante CDP.
+    browser_connection = await connect_browser_over_cdp()
+    if browser_connection is None:
         logger.error(
             "No se pudo conectar con el navegador Chrome en modo depuración remota. "
             "Asegúrate de ejecutar scripts/open_chrome_debug.ps1 antes de iniciar la app."
@@ -32,6 +36,9 @@ async def run(settings=None) -> None:  # noqa: D401 - firma heredada
 
     logger.debug("Conexión establecida con Chrome mediante CDP.")
 
+    browser = browser_connection.browser
+
+    # Normalizamos el contexto y la página principal para garantizar un entorno limpio.
     context = await prepare_context(browser)
     page = await prepare_primary_page(context)
 
@@ -42,6 +49,8 @@ async def run(settings=None) -> None:  # noqa: D401 - firma heredada
         await monitor_login_state(page, logger_instance=logger)
     finally:
         logger.debug("Monitor de sesión detenido. Chrome permanecerá abierto.")
+        await browser_connection.close()
+        logger.info("Trabajo terminado.")
 
 
 __all__ = ["run"]

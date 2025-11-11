@@ -15,6 +15,7 @@ def main() -> None:
     """Ejecuta la aplicación principal en un loop de asyncio."""
 
     logger.debug("Iniciando la aplicación de automatización...")
+    # Ejecutamos la rutina principal asegurando que el loop se cierre adecuadamente.
     asyncio.run(run())
 
 
