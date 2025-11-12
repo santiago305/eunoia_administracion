@@ -63,6 +63,11 @@ async def monitor_conversation(
 ) -> str:
     """Mantiene la captura de mensajes nuevos siguiendo la simulación original."""
 
+    if last_id:
+        # Este registro anticipa al operador cuál fue el último mensaje válido
+        # almacenado en disco para que pueda verificarlo en la interfaz.
+        print(f"🧭 Último ID registrado en caché: {last_id}")
+        
     await _prepare_messages_container(page)
 
     if last_id and last_id not in processed_ids:

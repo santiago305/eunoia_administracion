@@ -50,29 +50,60 @@ async def scroll_to_very_top(page: Page) -> None:
 
 
 async def scroll_to_last_processed(page: Page, last_id: str) -> None:
-    """Posiciona la vista cerca del último mensaje procesado."""
+    """Posiciona la vista cerca del último mensaje procesado.
+
+    - Si el identificador existe en la vista actual se centra y avanza una página
+      para reanudar la lectura desde el siguiente mensaje.
+    - Si el identificador no está visible, se realiza un desplazamiento gradual
+      hacia el final hasta encontrarlo. Si finalmente no aparece, la captura
+      continúa desde la posición alcanzada, que corresponderá al segmento más
+      reciente de la conversación.
+    """
 
     if not last_id:
         return
 
     locator = page.locator(f'div[role="row"] div[data-id="{last_id}"]')
+    messages = get_messages_container(page)
+
     try:
-        await locator.first.scroll_into_view_if_needed(timeout=3_000)
+        await messages.focus()
+    except Exception:  # pragma: no cover - depende del estado del DOM
+        pass
+
+    async def _scroll_metrics() -> dict:
+        try:
+            return await messages.evaluate(
+                "(el) => ({"
+                "scrollTop: el.scrollTop,"
+                "scrollHeight: el.scrollHeight,"
+                "clientHeight: el.clientHeight"
+                "})"
+            )
+        except Exception:  # pragma: no cover - puede fallar según el renderizado
+            return {"scrollTop": 0, "scrollHeight": 0, "clientHeight": 0}
+
+    while True:
+        if await locator.count() > 0:
+            try:
+                await locator.first.scroll_into_view_if_needed(timeout=3_000)
+            except Exception:  # pragma: no cover - interacción con la UI
+                pass
+            else:
+                await page.wait_for_timeout(SLOW_AFTER_SCROLL_MS)
+                await page.keyboard.press("PageDown")
+                await page.wait_for_timeout(SLOW_AFTER_SCROLL_MS)
+            break
+
+        metrics_before = await _scroll_metrics()
+        await page.keyboard.press("End")
         await page.wait_for_timeout(SLOW_AFTER_SCROLL_MS)
-        await page.keyboard.press("PageDown")
-        await page.wait_for_timeout(SLOW_AFTER_SCROLL_MS)
-    except Exception:  # pragma: no cover - depende del estado de carga de la UI
-        for _ in range(10):
-            await page.keyboard.press("End")
-            await page.wait_for_timeout(SLOW_AFTER_SCROLL_MS)
-            if await locator.count() > 0:
-                try:
-                    await locator.first.scroll_into_view_if_needed(timeout=2_000)
-                    await page.keyboard.press("PageDown")
-                    await page.wait_for_timeout(SLOW_AFTER_SCROLL_MS)
-                except Exception:  # pragma: no cover - interacción con la UI
-                    pass
-                break
+        metrics_after = await _scroll_metrics()
+
+        # Si no hay avance en el desplazamiento damos por terminado el intento.
+        if metrics_after.get("scrollTop", 0) <= metrics_before.get("scrollTop", 0):
+            break
 
 
 __all__ = ["scroll_to_last_processed", "scroll_to_very_top"]
+
