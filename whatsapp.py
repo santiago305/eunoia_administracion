@@ -22,15 +22,37 @@ BLOB_POLL_STEP_MS     = 200
 POLL_SECONDS          = 2.0
 # ==================================================
 
+_FIELD_BOUNDARY = (
+    r"(?="
+    r"(?:\s{2,}(?:"
+    r"Nombre\s*de\s*cliente"
+    r"|N[°º]\s*de\s*cel"
+    r"|Producto\s*y\s*cantidad"
+    r"|Servicio"
+    r"|Descripci[oó]n"
+    r"|M[eé]todo\s*(?:de\s*)?pago"
+    r"|Cuenta"
+    r"|Detalle"
+    r"|Nombre"
+    r"|Remitente"
+    r"|Img\s*(?:SRC|File)?"
+    r"|Fecha\s*/?\s*Hora"
+    r"|Capturado"
+    r")\s*:"
+    r")"
+    r"|[\r\n]"
+    r"|$)"
+)
+
 FIELD_PATTERNS = {
-    "Nombre de cliente":    re.compile(r"(?i)Nombre\s*de\s*cliente:\s*(.+)"),
-    "N° de cel":            re.compile(r"(?i)(?:N[°º]\s*de\s*cel|N[°º]\s*cel|Cel(?:ular)?):\s*(\+?\d[\d\s]+)"),
-    "Producto y cantidad":  re.compile(r"(?i)Producto\s*y\s*cantidad:\s*(.+)"),
-    "Servicio":             re.compile(r"(?i)\bServicio:\s*(.+)"),
-    "Descripción":          re.compile(r"(?i)\bDescripci[oó]n:\s*(.+)"),
-    "Método de pago":       re.compile(r"(?i)M[eé]todo\s*de\s*pago:\s*(.+)"),
-    "Cuenta":               re.compile(r"(?i)\bCuenta:\s*(.+)"),
-    "Detalle":              re.compile(r"(?i)\bDetalle:\s*(.+)"),
+    "Nombre de cliente":    re.compile(r"Nombre\s*de\s*cliente:\s*(.+?)" + _FIELD_BOUNDARY, re.IGNORECASE),
+    "N° de cel":            re.compile(r"(?:N[°º]\s*de\s*cel|N[°º]\s*cel|Cel(?:ular)?):\s*(\+?\d[\d\s]+?)" + _FIELD_BOUNDARY, re.IGNORECASE),
+    "Producto y cantidad":  re.compile(r"Producto\s*y\s*cantidad:\s*(.+?)" + _FIELD_BOUNDARY, re.IGNORECASE),
+    "Servicio":             re.compile(r"\bServicio:\s*(.+?)" + _FIELD_BOUNDARY, re.IGNORECASE),
+    "Descripción":          re.compile(r"\bDescripci[oó]n:\s*(.+?)" + _FIELD_BOUNDARY, re.IGNORECASE),
+    "Método de pago":       re.compile(r"M[eé]todo\s*(?:de\s*)?pago:\s*(.+?)" + _FIELD_BOUNDARY, re.IGNORECASE),
+    "Cuenta":               re.compile(r"\bCuenta:\s*(.+?)" + _FIELD_BOUNDARY, re.IGNORECASE),
+    "Detalle":              re.compile(r"\bDetalle:\s*(.+?)" + _FIELD_BOUNDARY, re.IGNORECASE),
 }
 
 ANTICIPO_PATTERN = re.compile(r"(?i)ANTICIPO")
