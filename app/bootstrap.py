@@ -35,7 +35,7 @@ async def run(settings=None) -> None:  # noqa: D401 - firma heredada
 
     ensure_directories()
     init_csv()
-    processed_ids, last_id = load_cache()
+    processed_ids, last_id, last_signature = load_cache()
     
     # Intentamos conectar con una instancia existente de Chrome mediante CDP.
     browser_connection = await connect_browser_over_cdp()
@@ -98,7 +98,12 @@ async def run(settings=None) -> None:  # noqa: D401 - firma heredada
                     "Navegación al chat '%s' finalizada correctamente.", CHAT_NAME
                 )
                 try:
-                    await monitor_conversation(page, processed_ids, last_id)
+                    await monitor_conversation(
+                        page,
+                        processed_ids,
+                        last_id,
+                        last_signature,
+                    )
                 except KeyboardInterrupt:
                     logger.info("Captura detenida por el usuario a través de Ctrl+C.")
     finally:

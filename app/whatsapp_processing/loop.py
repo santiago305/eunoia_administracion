@@ -57,6 +57,7 @@ async def monitor_conversation(
     page: Page,
     processed_ids: ProcessedIds,
     last_id: str,
+    last_signature: str,
     *,
     verbose_print: bool = True,
 ) -> str:
@@ -72,13 +73,14 @@ async def monitor_conversation(
     else:
         await scroll_to_last_processed(page, last_id)
 
-    _, last_id = await process_visible_top_to_bottom(
+    _, last_id, last_signature = await process_visible_top_to_bottom(
         page,
         processed_ids,
         last_id,
+        last_signature,
         verbose_print=verbose_print,
     )
-    save_cache(processed_ids, last_id)
+    save_cache(processed_ids, last_id, last_signature)
 
     print("🔄 Conectado. Escuchando nuevos mensajes... (Ctrl+C para salir)")
 
@@ -89,18 +91,19 @@ async def monitor_conversation(
                 await page.keyboard.press("End")
                 await page.wait_for_timeout(SLOW_AFTER_SCROLL_MS)
 
-            new_count, last_id = await process_visible_top_to_bottom(
+            new_count, last_id, last_signature = await process_visible_top_to_bottom(
                 page,
                 processed_ids,
                 last_id,
+                last_signature,
                 verbose_print=verbose_print,
             )
             if new_count:
-                save_cache(processed_ids, last_id)
+                save_cache(processed_ids, last_id, last_signature)
 
             await asyncio.sleep(POLL_SECONDS)
     finally:
-        save_cache(processed_ids, last_id)
+        save_cache(processed_ids, last_id, last_signature)
 
     return last_id
 

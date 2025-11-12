@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from typing import Dict, Tuple
 from uuid import uuid4
 
@@ -50,13 +51,28 @@ async def process_message_strict(page: Page, message: Locator) -> Dict[str, str]
     return result
 
 
+def _build_signature(payload: Dict[str, str]) -> str:
+    """Genera una huella determinística de un mensaje exportado."""
+
+    pieces = (
+        payload.get("timestamp", ""),
+        payload.get("sender", ""),
+        payload.get("raw_text", ""),
+        payload.get("img_src_blob", ""),
+        payload.get("img_src_data", ""),
+    )
+    joined = "\u241e".join(pieces)
+    return hashlib.sha1(joined.encode("utf-8", "ignore")).hexdigest()
+
+
 async def process_visible_top_to_bottom(
     page: Page,
     processed_ids: ProcessedIds,
     last_id: str,
+    last_signature: str,
     *,
     verbose_print: bool = True,
-) -> Tuple[int, str]:
+) -> Tuple[int, str, str]:
     """Recorre los mensajes visibles y procesa los que aún no fueron atendidos."""
 
     new_count = 0
@@ -64,10 +80,6 @@ async def process_visible_top_to_bottom(
     for element in elements:
         data_id = await element.get_attribute("data-id") or ""
         if not data_id:
-            continue
-
-        if data_id == last_id and data_id not in processed_ids:
-            processed_ids.add(data_id)
             continue
 
         if data_id in processed_ids:
@@ -83,11 +95,27 @@ async def process_visible_top_to_bottom(
         if not parsed:
             continue
 
+        signature = _build_signature(parsed)
+        if last_signature and signature == last_signature and (
+            not last_id or data_id == last_id
+        ):
+            processed_ids.add(parsed["data_id"])
+            last_id = parsed["data_id"]
+            last_signature = signature
+            continue
+
+        if data_id == last_id:
+            if data_id not in processed_ids:
+                processed_ids.add(data_id)
+            last_signature = signature
+            continue
+
         append_csv(parsed)
         append_jsonl(parsed)
 
         processed_ids.add(parsed["data_id"])
         last_id = parsed["data_id"]
+        last_signature = signature
         if verbose_print:
             print("════════════════════════════════════════")
             print(f"✅ Capturado: {parsed['data_id']}")
@@ -106,7 +134,7 @@ async def process_visible_top_to_bottom(
 
         await page.wait_for_timeout(SLOW_PER_MESSAGE_MS)
 
-    return new_count, last_id
+    return new_count, last_id, last_signature
 
 
 __all__ = ["process_message_strict", "process_visible_top_to_bottom"]
