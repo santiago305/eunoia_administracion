@@ -23,6 +23,8 @@ def load_cache(cache_path: str | None = None) -> Tuple[ProcessedIds, str]:
 
     processed = set(data.get("processed_ids", []))
     last_id = data.get("last_id", "")
+    if last_id and last_id not in processed:
+        processed.add(last_id)
     return processed, last_id
 
 

@@ -63,7 +63,14 @@ async def process_visible_top_to_bottom(
     elements = await iter_message_elements(page)
     for element in elements:
         data_id = await element.get_attribute("data-id") or ""
-        if not data_id or data_id in processed_ids:
+        if not data_id:
+            continue
+
+        if data_id == last_id and data_id not in processed_ids:
+            processed_ids.add(data_id)
+            continue
+
+        if data_id in processed_ids:
             continue
 
         try:
