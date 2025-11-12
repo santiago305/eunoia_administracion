@@ -14,6 +14,13 @@ from .browser_management import (
 )
 from .login_state import LoginState, monitor_login_state
 from .chat_navigation import ChatNavigationError, open_chat
+from .whatsapp_processing import (
+    CHAT_NAME,
+    ensure_directories,
+    init_csv,
+    load_cache,
+    monitor_conversation,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +33,10 @@ async def run(settings=None) -> None:  # noqa: D401 - firma heredada
     logging.basicConfig(level=logging.INFO)
     logger.info("Conectando con Chrome existente mediante CDP...")
 
+    ensure_directories()
+    init_csv()
+    processed_ids, last_id = load_cache()
+    
     # Intentamos conectar con una instancia existente de Chrome mediante CDP.
     browser_connection = await connect_browser_over_cdp()
     if browser_connection is None:
@@ -79,13 +90,17 @@ async def run(settings=None) -> None:  # noqa: D401 - firma heredada
         if state == LoginState.LOGGED_IN:
             logger.info("Sesión autenticada en WhatsApp Web.")
             try:
-                await open_chat(page, "Comprobantes Eunoia")
+                await open_chat(page, CHAT_NAME)
             except ChatNavigationError as navigation_error:
                 logger.error(str(navigation_error))
             else:
                 logger.info(
-                    "Navegación al chat 'Comprobantes Eunoia' finalizada correctamente."
+                    "Navegación al chat '%s' finalizada correctamente.", CHAT_NAME
                 )
+                try:
+                    await monitor_conversation(page, processed_ids, last_id)
+                except KeyboardInterrupt:
+                    logger.info("Captura detenida por el usuario a través de Ctrl+C.")
     finally:
         logger.info("Monitor de sesión detenido. Chrome permanecerá abierto.")
         if browser_connection is not None:
