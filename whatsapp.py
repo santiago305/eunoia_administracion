@@ -1,5 +1,5 @@
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
-import re, json, os, base64, time, csv
+import re, json, os, base64, time, csv, unicodedata
 from pathlib import Path
 
 # ===================== CONFIG =====================
@@ -31,6 +31,30 @@ FIELD_PATTERNS = {
     "Método de pago":       re.compile(r"(?i)M[eé]todo\s*de\s*pago:\s*(.+)"),
     "Cuenta":               re.compile(r"(?i)\bCuenta:\s*(.+)"),
     "Detalle":              re.compile(r"(?i)\bDetalle:\s*(.+)"),
+}
+
+ANTICIPO_PATTERN = re.compile(r"(?i)ANTICIPO")
+KNOWN_FIELD_PREFIXES = {
+    "nombre de cliente",
+    "n de cel",
+    "n de celular",
+    "producto y cantidad",
+    "producto",
+    "servicio",
+    "serv desc",
+    "servicio descripcion",
+    "descripcion",
+    "metodo de pago",
+    "metodo pago",
+    "metodo",
+    "cuenta",
+    "img src",
+    "img file",
+    "imagen",
+    "capturado",
+    "fecha hora",
+    "remitente",
+    "nombre",
 }
 
 def ensure_dirs():
@@ -311,10 +335,11 @@ def get_text_fields(full_text):
         if m:
             data[field] = m.group(1).strip()
 
-    # ANTICIPO sin "Detalle:"
+    # Derivar Detalle cuando no viene explícito en el texto.
     if "Detalle" not in data:
-        if re.search(r"(?im)^\s*ANTICIPO\s*$", full_text):
-            data["Detalle"] = "ANTICIPO"
+        detail_candidate = _extract_implied_detail(full_text)
+        if detail_candidate:
+            data["Detalle"] = detail_candidate
 
     # Unificación Serv./Desc.
     serv = data.get("Servicio")
@@ -331,6 +356,76 @@ def get_text_fields(full_text):
     if not any(k in data for k in keys_to_check):
         return None
     return data
+
+
+def _extract_implied_detail(text: str) -> str | None:
+    segments = _segment_message(text)
+    if not segments:
+        return None
+
+    for segment in reversed(segments):
+        if not ANTICIPO_PATTERN.search(segment):
+            continue
+        extracted = _detail_from_anticipo_segment(segment)
+        if extracted:
+            return extracted
+
+    for segment in reversed(segments):
+        if _segment_is_known_field(segment):
+            continue
+        cleaned = _clean_detail_segment(segment)
+        if cleaned:
+            return cleaned
+
+    return None
+
+
+def _segment_message(text: str):
+    segments = []
+    for raw_line in re.split(r"[\r\n]+", text):
+        if not raw_line:
+            continue
+        parts = raw_line.split("✅") if "✅" in raw_line else [raw_line]
+        for part in parts:
+            cleaned = part.strip()
+            if cleaned:
+                segments.append(cleaned)
+    return segments
+
+
+def _detail_from_anticipo_segment(segment: str) -> str | None:
+    match = re.search(r"(?i)ANTICIPO\b[\s:\-]*([^\r\n]*)", segment)
+    if match:
+        remainder = match.group(1).strip()
+        if remainder:
+            return remainder
+
+    trailing = re.split(r"(?i)ANTICIPO", segment)[-1].strip(" :.-")
+    return trailing or None
+
+
+def _segment_is_known_field(segment: str) -> bool:
+    prefix = _normalize_prefix(segment)
+    if not prefix:
+        return False
+    return any(prefix.startswith(item) for item in KNOWN_FIELD_PREFIXES)
+
+
+def _normalize_prefix(segment: str) -> str:
+    normalized = unicodedata.normalize("NFD", segment)
+    normalized = "".join(ch for ch in normalized if unicodedata.category(ch) != "Mn")
+    normalized = normalized.replace("º", "").replace("°", "")
+    normalized = normalized.lower()
+    prefix = normalized.split(":", 1)[0]
+    prefix = re.sub(r"[^a-z0-9]+", " ", prefix)
+    prefix = re.sub(r"\s+", " ", prefix)
+    return prefix.strip()
+
+
+def _clean_detail_segment(segment: str) -> str:
+    cleaned = segment.strip()
+    cleaned = cleaned.lstrip("-•:·")
+    return cleaned.strip()
 
 def get_text_block_strict(message_el):
     # El texto también debe estar dentro del mismo copyable-text (tu estructura)
