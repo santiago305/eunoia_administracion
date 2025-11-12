@@ -76,10 +76,28 @@ async def process_visible_top_to_bottom(
     """Recorre los mensajes visibles y procesa los que aún no fueron atendidos."""
 
     new_count = 0
+    skip_until_last = False
+    has_seen_last = False
+
+    if last_id:
+        try:
+            locator = page.locator(f'div[role="row"] div[data-id="{last_id}"]')
+            skip_until_last = await locator.count() > 0
+        except Exception:  # pragma: no cover - depende del estado del DOM
+            skip_until_last = False
+
+    if not skip_until_last:
+        has_seen_last = True
+
     elements = await iter_message_elements(page)
     for element in elements:
         data_id = await element.get_attribute("data-id") or ""
         if not data_id:
+            continue
+
+        if skip_until_last and not has_seen_last and data_id != last_id:
+            if data_id not in processed_ids:
+                processed_ids.add(data_id)
             continue
 
         if data_id in processed_ids:
@@ -102,12 +120,14 @@ async def process_visible_top_to_bottom(
             processed_ids.add(parsed["data_id"])
             last_id = parsed["data_id"]
             last_signature = signature
+            has_seen_last = True
             continue
 
         if data_id == last_id:
             if data_id not in processed_ids:
                 processed_ids.add(data_id)
             last_signature = signature
+            has_seen_last = True
             continue
 
         append_csv(parsed)
@@ -116,6 +136,7 @@ async def process_visible_top_to_bottom(
         processed_ids.add(parsed["data_id"])
         last_id = parsed["data_id"]
         last_signature = signature
+        has_seen_last = True
         if verbose_print:
             print("════════════════════════════════════════")
             print(f"✅ Capturado: {parsed['data_id']}")
