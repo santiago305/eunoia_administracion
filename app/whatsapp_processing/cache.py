@@ -82,8 +82,16 @@ def save_cache(
     if last_id:
         ids.add(last_id)
 
+    ordered_ids = sorted(ids)
+    if last_id:
+        try:
+            ordered_ids.remove(last_id)
+        except ValueError:
+            pass
+        ordered_ids.append(last_id)
+
     payload = {
-        "processed_ids": sorted(ids),
+        "processed_ids": ordered_ids,
         "last_id": last_id,
         "last_signature": last_signature,
     }
