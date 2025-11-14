@@ -35,15 +35,8 @@ async def iter_message_elements(page: Page) -> List[Locator]:
             box = await el.bounding_box()
         except Exception:  # pragma: no cover - depende del renderizado en tiempo real
             box = None
-        if box is None:
-            # Cuando el elemento todavía no tiene un ``bounding_box`` disponible,
-            # le asignamos una posición virtual muy alta para conservar el orden
-            # natural (el índice del ``Locator``) y evitar que quede por delante
-            # de mensajes ya procesados.
-            position = 1_000_000.0 + float(index)
-        else:
-            position = box.get("y", float(index))
-        items.append((position, el))
+        y = box["y"] if box else 0.0
+        items.append((y, el))
 
     items.sort(key=lambda item: item[0])
     return [element for _, element in items]
