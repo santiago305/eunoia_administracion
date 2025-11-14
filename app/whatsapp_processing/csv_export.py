@@ -17,6 +17,7 @@ HEADER = [
     "N° de cel",
     "Producto y cantidad",
     "servicio_o_descripcion",
+    "Balance",
     "Método de pago",
     "Cuenta",
     "Detalle",

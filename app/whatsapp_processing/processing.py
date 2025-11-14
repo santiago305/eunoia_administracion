@@ -146,6 +146,7 @@ async def process_visible_top_to_bottom(
             print(f"  N° Cel     : {parsed.get('N° de cel', '')}")
             print(f"  Producto   : {parsed.get('Producto y cantidad', '')}")
             print(f"  Serv./Desc.: {parsed.get('servicio_o_descripcion', '')}")
+            print(f"  Balance    : {parsed.get('Balance', '')}")
             print(f"  Método pago: {parsed.get('Método de pago', '')}")
             print(f"  Cuenta     : {parsed.get('Cuenta', '')}")
             print(f"  Detalle    : {parsed.get('Detalle', '')}")

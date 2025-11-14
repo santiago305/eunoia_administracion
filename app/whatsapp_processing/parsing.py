@@ -23,6 +23,7 @@ KNOWN_FIELD_PREFIXES = {
     "metodo de pago",
     "metodo pago",
     "metodo",
+    "balance",
     "cuenta",
     "img src",
     "img file",
@@ -78,6 +79,18 @@ def get_text_fields(text: str) -> Dict[str, str] | None:
         data["servicio_o_descripcion"] = service
     elif description:
         data["servicio_o_descripcion"] = description
+
+    balance_value = data.get("Balance") or ""
+    normalized_balance = balance_value.strip().lower()
+    balance_tokens = re.findall(r"[a-záéíóúñ]+", normalized_balance)
+    balance_normalized = None
+    for token in balance_tokens:
+        if token in {"ingreso", "egreso"}:
+            balance_normalized = token
+            break
+    if balance_normalized is None:
+        balance_normalized = "ingreso"
+    data["Balance"] = balance_normalized
 
     keys = [
         "Nombre de cliente",

@@ -29,6 +29,7 @@ _FIELD_BOUNDARY = (
     r"|Producto\s*y\s*cantidad"
     r"|Servicio"
     r"|Descripci[oó]n"
+    r"|Balance"
     r"|M[eé]todo\s*(?:de\s*)?pago"
     r"|Cuenta"
     r"|Detalle"
@@ -52,6 +53,7 @@ FIELD_PATTERNS = {
     "Producto y cantidad": re.compile(r"Producto\s*y\s*cantidad:\s*(.+?)" + _FIELD_BOUNDARY, re.IGNORECASE),
     "Servicio": re.compile(r"\bServicio:\s*(.+?)" + _FIELD_BOUNDARY, re.IGNORECASE),
     "Descripción": re.compile(r"\bDescripci[oó]n:\s*(.+?)" + _FIELD_BOUNDARY, re.IGNORECASE),
+    "Balance": re.compile(r"\bBalance:\s*(.+?)" + _FIELD_BOUNDARY, re.IGNORECASE),
     "Método de pago": re.compile(r"M[eé]todo\s*(?:de\s*)?pago:\s*(.+?)" + _FIELD_BOUNDARY, re.IGNORECASE),
     "Cuenta": re.compile(r"\bCuenta:\s*(.+?)" + _FIELD_BOUNDARY, re.IGNORECASE),
     "Detalle": re.compile(r"\bDetalle:\s*(.+?)" + _FIELD_BOUNDARY, re.IGNORECASE),
