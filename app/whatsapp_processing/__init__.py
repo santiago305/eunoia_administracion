@@ -1,5 +1,5 @@
 """Herramientas asincrónicas para capturar comprobantes desde WhatsApp Web."""
-
+from .cache import CacheState, load_cache, save_cache
 from .cache import load_cache, save_cache
 from .constants import CHAT_NAME
 from .csv_export import append_csv, init_csv
@@ -8,6 +8,7 @@ from .jsonl_export import append_jsonl
 from .loop import monitor_conversation
 
 __all__ = [
+    "CacheState",
     "append_csv",
     "append_jsonl",
     "CHAT_NAME",

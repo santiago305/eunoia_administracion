@@ -4,13 +4,32 @@ from __future__ import annotations
 
 import csv
 import json
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterable, Set, Tuple
+from typing import Iterable, Iterator, List, Set, Tuple
 
 from .constants import CACHE_FILE, CSV_FILE
 
 
 ProcessedIds = Set[str]
+
+
+@dataclass
+class CacheState:
+    """Estado completo recuperado del caché en disco."""
+
+    processed_ids: ProcessedIds
+    last_id: str
+    last_signature: str
+    previous_id: str = ""
+    ordered_ids: Tuple[str, ...] = field(default_factory=tuple)
+
+    def __iter__(self) -> Iterator[object]:
+        """Permite desempaquetar ``CacheState`` como una tupla clásica."""
+
+        yield self.processed_ids
+        yield self.last_id
+        yield self.last_signature
 
 
 def _load_ids_from_csv(csv_path: str | None = None) -> tuple[ProcessedIds, str]:
@@ -41,21 +60,47 @@ def _load_ids_from_csv(csv_path: str | None = None) -> tuple[ProcessedIds, str]:
     return collected, last_seen
 
 
-def load_cache(cache_path: str | None = None) -> Tuple[ProcessedIds, str, str]:
+def load_cache(
+    cache_path: str | None = None,
+    csv_path: str | None = None,
+) -> CacheState:
     """Recupera el estado previamente almacenado desde disco."""
 
     path = CACHE_FILE if cache_path is None else cache_path
+    raw_ids: List[str] = []
+    data: dict[str, object] = {}
+
     try:
         with open(path, "r", encoding="utf-8") as handle:
-            data = json.load(handle)
+            loaded = json.load(handle)
     except FileNotFoundError:
-        return set(), "", ""
+        loaded = {}
 
-    processed = set(data.get("processed_ids", []))
-    last_id = data.get("last_id", "")
-    last_signature = data.get("last_signature", "")
+    if isinstance(loaded, dict):
+        data = loaded
+        raw_ids = [
+            value
+            for value in data.get("processed_ids", [])
+            if isinstance(value, str)
+        ]
+    else:
+        raw_ids = []
+        data = {}
 
-    csv_ids, csv_last_id = _load_ids_from_csv()
+    processed: ProcessedIds = set(raw_ids)
+
+    last_id = str(data.get("last_id", "") or "")
+    last_signature = str(data.get("last_signature", "") or "")
+
+    if not last_id and raw_ids:
+        # Compatibilidad con ejecuciones antiguas donde ``last_id`` no se guardaba.
+        for candidate in reversed(raw_ids):
+            if candidate:
+                last_id = candidate
+                last_signature = ""
+                break
+
+    csv_ids, csv_last_id = _load_ids_from_csv(csv_path)
     if csv_ids:
         processed.update(csv_ids)
 
@@ -66,8 +111,26 @@ def load_cache(cache_path: str | None = None) -> Tuple[ProcessedIds, str, str]:
 
     if last_id and last_id not in processed:
         processed.add(last_id)
-    return processed, last_id, last_signature
 
+    previous_id = ""
+    ordered_ids: Tuple[str, ...] = tuple(raw_ids)
+    if last_id and raw_ids:
+        try:
+            idx = raw_ids.index(last_id)
+        except ValueError:
+            if len(raw_ids) >= 2:
+                previous_id = raw_ids[-2]
+        else:
+            if idx > 0:
+                previous_id = raw_ids[idx - 1]
+
+    return CacheState(
+        processed_ids=processed,
+        last_id=last_id,
+        last_signature=last_signature,
+        previous_id=previous_id,
+        ordered_ids=ordered_ids,
+    )
 
 def save_cache(
     processed_ids: Iterable[str],
@@ -99,4 +162,4 @@ def save_cache(
         json.dump(payload, handle, ensure_ascii=False, indent=2)
 
 
-__all__ = ["ProcessedIds", "load_cache", "save_cache"]
+__all__ = ["CacheState", "ProcessedIds", "load_cache", "save_cache"]

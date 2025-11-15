@@ -35,7 +35,9 @@ async def run(settings=None) -> None:  # noqa: D401 - firma heredada
 
     ensure_directories()
     init_csv()
-    processed_ids, last_id, last_signature = load_cache()
+    cache_state = load_cache()
+    processed_ids, last_id, last_signature = cache_state
+    previous_cached_id = cache_state.previous_id
     
     # Intentamos conectar con una instancia existente de Chrome mediante CDP.
     browser_connection = await connect_browser_over_cdp()
@@ -103,6 +105,7 @@ async def run(settings=None) -> None:  # noqa: D401 - firma heredada
                         processed_ids,
                         last_id,
                         last_signature,
+                        previous_cached_id=previous_cached_id,
                     )
                 except KeyboardInterrupt:
                     logger.info("Captura detenida por el usuario a través de Ctrl+C.")
