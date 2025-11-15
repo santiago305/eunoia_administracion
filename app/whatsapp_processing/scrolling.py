@@ -4,7 +4,12 @@ from __future__ import annotations
 
 from playwright.async_api import Page
 
-from .constants import SLOW_AFTER_SCROLL_MS, TOP_SCROLL_MAX_ROUNDS, TOP_SCROLL_PGUP_BURST
+from .constants import (
+    SLOW_AFTER_SCROLL_MS,
+    TOP_SCROLL_MAX_ROUNDS,
+    TOP_SCROLL_PGUP_BURST,
+    TOP_SCROLL_STABLE_ROUNDS,
+)
 from .containers import get_messages_container
 from .iteration import first_message_id
 
@@ -28,8 +33,12 @@ async def scroll_to_very_top(page: Page) -> None:
 
     previous_top = ""
     rounds_without_change = 0
+    attempts = 0
 
-    for _ in range(TOP_SCROLL_MAX_ROUNDS):
+    while True:
+        if TOP_SCROLL_MAX_ROUNDS and attempts >= TOP_SCROLL_MAX_ROUNDS:
+            break
+        attempts += 1
         await _pageup_burst(page)
         try:
             await page.evaluate("(el)=>{el.scrollTop=0}", messages)
@@ -39,13 +48,16 @@ async def scroll_to_very_top(page: Page) -> None:
 
         top_id = await first_message_id(page)
         if not top_id:
+            rounds_without_change += 1
+            if rounds_without_change >= TOP_SCROLL_STABLE_ROUNDS:
+                break
             continue
         if top_id == previous_top:
             rounds_without_change += 1
         else:
             rounds_without_change = 0
         previous_top = top_id
-        if rounds_without_change >= 3:
+        if rounds_without_change >= TOP_SCROLL_STABLE_ROUNDS:
             break
 
 

@@ -21,7 +21,10 @@ from .iteration import iter_message_elements
 async def process_message_strict(page: Page, message: Locator) -> Dict[str, str] | None:
     """Evalúa si un mensaje cumple con la estructura requerida y extrae sus datos."""
 
-    data_id = await message.get_attribute("data-id") or ""
+    try:
+        data_id = await message.get_attribute("data-id") or ""
+    except Exception:
+        return None
     blob_element, blob_src, data_src = await strict_has_blob_img_inside_copyable(message)
     if blob_element is None or not blob_src:
         return None
@@ -91,7 +94,10 @@ async def process_visible_top_to_bottom(
 
     elements = await iter_message_elements(page)
     for element in elements:
-        data_id = await element.get_attribute("data-id") or ""
+        try:
+            data_id = await element.get_attribute("data-id") or ""
+        except Exception:
+            continue
         if not data_id:
             continue
 
@@ -109,7 +115,10 @@ async def process_visible_top_to_bottom(
             pass
         await page.wait_for_timeout(SLOW_PER_MESSAGE_MS)
 
-        parsed = await process_message_strict(page, element)
+        try:
+            parsed = await process_message_strict(page, element)
+        except Exception:
+            continue
         if not parsed:
             continue
 
