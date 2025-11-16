@@ -123,21 +123,26 @@ async def monitor_conversation(
         processed_ids.add(last_id)
 
     if not last_id:
+        # eliminar comentario a futuro
+        print("⚠️ No tenemos un ID de búsqueda en caché (svc). Se partirá desde el inicio.")
         await scroll_to_very_top(page)
     else:
-           # 1) Desconexión temporal: reubicación en el último mensaje procesado.
+         # 1) Reubicación en el último mensaje procesado.
+        #    Mantiene el punto de partida cuando hay datos en caché para
+        #    evitar re-procesar la conversación completa tras una desconexión.
+        print(f"🔎 Intentando reubicar el ID de búsqueda: {last_id}")
         await scroll_to_last_processed(page, last_id)
         pass
 
-    # 2) Desconexión temporal: barrido inicial y guardado de mensajes visibles.
-    # _, last_id, last_signature = await process_visible_top_to_bottom(
-    #     page,
-    #     processed_ids,
-    #     last_id,
-    #     last_signature,
-    #     verbose_print=verbose_print,
-    # )
-    # save_cache(processed_ids, last_id, last_signature)
+    # 2) barrido inicial y guardado de mensajes visibles.
+    _, last_id, last_signature = await process_visible_top_to_bottom(
+        page,
+        processed_ids,
+        last_id,
+        last_signature,
+        verbose_print=verbose_print,
+    )
+    save_cache(processed_ids, last_id, last_signature)
 
     # 3) Desconexión temporal: monitoreo continuo de nuevos mensajes y desplazamiento.
     # print("🔄 Conectado. Escuchando nuevos mensajes... (Ctrl+C para salir)")
