@@ -134,7 +134,12 @@ async def monitor_conversation(
         await scroll_to_last_processed(page, last_id)
         pass
 
-    # 2) barrido inicial y guardado de mensajes visibles.
+     # 2) Barrido inicial y guardado de mensajes visibles.
+    #    Se recorre la ventana actual de mensajes desde el inicio hacia abajo para
+    #    procesar y registrar cualquier mensaje que aún no esté en caché. La
+    #    función devuelve el conteo de mensajes nuevos (ignoramos el valor), el
+    #    último ID procesado y su firma, que se almacenan para mantener la
+    #    continuidad del seguimiento.
     _, last_id, last_signature = await process_visible_top_to_bottom(
         page,
         processed_ids,
@@ -142,7 +147,11 @@ async def monitor_conversation(
         last_signature,
         verbose_print=verbose_print,
     )
-    save_cache(processed_ids, last_id, last_signature)
+
+    #    Tras el barrido se persisten los identificadores procesados y el último
+    #    punto de control para que, si la sesión se interrumpe, el sistema pueda
+    #    reanudar desde el mismo lugar sin re-trabajar mensajes ya vistos
+    # save_cache(processed_ids, last_id, last_signature)
 
     # 3) Desconexión temporal: monitoreo continuo de nuevos mensajes y desplazamiento.
     # print("🔄 Conectado. Escuchando nuevos mensajes... (Ctrl+C para salir)")
