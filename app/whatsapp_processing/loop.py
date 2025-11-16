@@ -122,11 +122,11 @@ async def monitor_conversation(
     if last_id and last_id not in processed_ids:
         processed_ids.add(last_id)
 
-    if not processed_ids:
+    if not last_id:
         await scroll_to_very_top(page)
     else:
            # 1) Desconexión temporal: reubicación en el último mensaje procesado.
-        # await scroll_to_last_processed(page, last_id)
+        await scroll_to_last_processed(page, last_id)
         pass
 
     # 2) Desconexión temporal: barrido inicial y guardado de mensajes visibles.
