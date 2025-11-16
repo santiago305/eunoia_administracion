@@ -125,45 +125,53 @@ async def monitor_conversation(
     if not processed_ids:
         await scroll_to_very_top(page)
     else:
-        await scroll_to_last_processed(page, last_id)
+           # 1) Desconexión temporal: reubicación en el último mensaje procesado.
+        # await scroll_to_last_processed(page, last_id)
+        pass
 
-    _, last_id, last_signature = await process_visible_top_to_bottom(
-        page,
-        processed_ids,
-        last_id,
-        last_signature,
-        verbose_print=verbose_print,
+    # 2) Desconexión temporal: barrido inicial y guardado de mensajes visibles.
+    # _, last_id, last_signature = await process_visible_top_to_bottom(
+    #     page,
+    #     processed_ids,
+    #     last_id,
+    #     last_signature,
+    #     verbose_print=verbose_print,
+    # )
+    # save_cache(processed_ids, last_id, last_signature)
+
+    # 3) Desconexión temporal: monitoreo continuo de nuevos mensajes y desplazamiento.
+    # print("🔄 Conectado. Escuchando nuevos mensajes... (Ctrl+C para salir)")
+    #
+    # try:
+    #     while True:
+    #         while True:
+    #             await _prepare_messages_container(page)
+    #
+    #             if last_id and await _needs_scroll_to_bottom(page, last_id):
+    #                 await page.keyboard.press("End")
+    #                 await page.wait_for_timeout(SLOW_AFTER_SCROLL_MS)
+    #                 await _prepare_messages_container(page)
+    #
+    #             print("🔍 Buscando mensajes nuevos...")
+    #             new_count, last_id, last_signature = await process_visible_top_to_bottom(
+    #                 page,
+    #                 processed_ids,
+    #                 last_id,
+    #                 last_signature,
+    #                 verbose_print=verbose_print,
+    #             )
+    #             if not new_count:
+    #                 break
+    #
+    #             save_cache(processed_ids, last_id, last_signature)
+    #
+    #         await asyncio.sleep(POLL_SECONDS)
+    # finally:
+    #     save_cache(processed_ids, last_id, last_signature)
+
+    print(
+        "🔌 Captura pausada: solo se abre el chat y se desplaza al inicio cuando no hay datos guardados."
     )
-    save_cache(processed_ids, last_id, last_signature)
-
-    print("🔄 Conectado. Escuchando nuevos mensajes... (Ctrl+C para salir)")
-
-    try:
-        while True:
-            while True:
-                await _prepare_messages_container(page)
-
-                if last_id and await _needs_scroll_to_bottom(page, last_id):
-                    await page.keyboard.press("End")
-                    await page.wait_for_timeout(SLOW_AFTER_SCROLL_MS)
-                    await _prepare_messages_container(page)
-
-                print("🔍 Buscando mensajes nuevos...")
-                new_count, last_id, last_signature = await process_visible_top_to_bottom(
-                    page,
-                    processed_ids,
-                    last_id,
-                    last_signature,
-                    verbose_print=verbose_print,
-                )
-                if not new_count:
-                    break
-
-                save_cache(processed_ids, last_id, last_signature)
-
-            await asyncio.sleep(POLL_SECONDS)
-    finally:
-        save_cache(processed_ids, last_id, last_signature)
 
     return last_id
 
