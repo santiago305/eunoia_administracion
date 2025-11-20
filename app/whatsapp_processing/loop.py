@@ -67,7 +67,18 @@ async def _announce_last_id_context(
 
     locator = page.locator(f'div[role="row"] div[data-id="{last_id}"]')
     try:
-        count = await locator.count()
+        await page.wait_for_timeout(2_000)
+        count = 0
+        for _ in range(2):
+            count = await locator.count()
+            if count:
+                break
+            try:
+                await page.locator("div[role='row'] div[data-id]").first.wait_for(
+                    state="attached", timeout=2_000
+                )
+            except Exception:  # pragma: no cover - depende del estado del DOM
+                await page.wait_for_timeout(500)
     except Exception:  # pragma: no cover - depende del estado del DOM
         count = 0
 
