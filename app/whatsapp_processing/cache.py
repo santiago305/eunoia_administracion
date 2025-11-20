@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import csv
 import json
+import hashlib
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterable, Iterator, List, Set, Tuple
+from typing import Iterable, Iterator, List, Mapping, Sequence, Set, Tuple
 
-from .constants import CACHE_FILE, CSV_FILE
+from .constants import CACHE_FILE, CSV_FILE, JSONL_FILE
 
 
 ProcessedIds = Set[str]
@@ -32,63 +33,116 @@ class CacheState:
         yield self.last_signature
 
 
-def _load_ids_from_csv(csv_path: str | None = None) -> tuple[ProcessedIds, str]:
+def _load_ids_from_csv(
+    csv_path: str | None = None,
+) -> tuple[ProcessedIds, str, Tuple[str, ...]]:
     """Recupera los identificadores previamente exportados al CSV."""
 
     path = Path(CSV_FILE if csv_path is None else csv_path)
     if not path.exists():
-        return set(), ""
+        return set(), "", tuple()
 
     collected: ProcessedIds = set()
+    ordered: list[str] = []
     last_seen = ""
 
     try:
         with path.open("r", newline="", encoding="utf-8") as handle:
             reader = csv.reader(handle)
-            next(reader, None)  # omitimos el encabezado si existe
+            header = next(reader, None) or []
+            header_lower = [value.lower() for value in header]
+            data_idx = header_lower.index("data_id") if "data_id" in header_lower else 0
             for row in reader:
                 if not row:
                     continue
-                data_id = (row[0] or "").strip()
+                try:
+                    data_id = (row[data_idx] or "").strip()
+                except Exception:
+                    continue
                 if not data_id:
                     continue
                 collected.add(data_id)
+                ordered.append(data_id)
                 last_seen = data_id
     except Exception:
-        return collected, last_seen
+        return collected, last_seen, tuple(ordered)
 
-    return collected, last_seen
+    return collected, last_seen, tuple(ordered)
+
+
+def _build_signature(payload: Mapping[str, str]) -> str:
+    """Replica la huella utilizada al exportar mensajes."""
+
+    pieces: Sequence[str] = (
+        payload.get("timestamp", ""),
+        payload.get("sender", ""),
+        payload.get("raw_text", ""),
+        payload.get("img_src_blob", ""),
+        payload.get("img_src_data", ""),
+    )
+    joined = "\u241e".join(pieces)
+    return hashlib.sha1(joined.encode("utf-8", "ignore")).hexdigest()
+
+
+def _load_last_signature_from_jsonl(
+    jsonl_path: str | None = None,
+) -> tuple[str, str]:
+    """Obtiene la firma del último registro exportado en JSONL."""
+
+    path = Path(JSONL_FILE if jsonl_path is None else jsonl_path)
+    if not path.exists():
+        return "", ""
+
+    try:
+        with path.open("r", encoding="utf-8") as handle:
+            lines = [line.strip() for line in handle if line.strip()]
+    except Exception:
+        return "", ""
+
+    for raw in reversed(lines):
+        try:
+            record = json.loads(raw)
+        except Exception:
+            continue
+        if not isinstance(record, dict):
+            continue
+        data_id = str(record.get("data_id", "") or "")
+        if not data_id:
+            continue
+        return data_id, _build_signature(record)
+
+    return "", ""
 
 
 def load_cache(
     cache_path: str | None = None,
     csv_path: str | None = None,
+    jsonl_path: str | None = None,
+    *,
+    use_cache_file: bool = False,
 ) -> CacheState:
     """Recupera el estado previamente almacenado desde disco."""
 
-    path = CACHE_FILE if cache_path is None else cache_path
     raw_ids: List[str] = []
     data: dict[str, object] = {}
 
-    try:
-        with open(path, "r", encoding="utf-8") as handle:
-            loaded = json.load(handle)
-    except FileNotFoundError:
-        loaded = {}
+    if use_cache_file:
+        path = CACHE_FILE if cache_path is None else cache_path
+        try:
+            with open(path, "r", encoding="utf-8") as handle:
+                loaded = json.load(handle)
+        except FileNotFoundError:
+            loaded = {}
 
-    if isinstance(loaded, dict):
-        data = loaded
-        raw_ids = [
-            value
-            for value in data.get("processed_ids", [])
-            if isinstance(value, str)
-        ]
-    else:
-        raw_ids = []
-        data = {}
+        if isinstance(loaded, dict):
+            data = loaded
+            raw_ids = [
+                value
+                for value in data.get("processed_ids", [])
+                if isinstance(value, str)
+            ]
 
     processed: ProcessedIds = set(raw_ids)
-
     last_id = str(data.get("last_id", "") or "")
     last_signature = str(data.get("last_signature", "") or "")
 
@@ -100,7 +154,7 @@ def load_cache(
                 last_signature = ""
                 break
 
-    csv_ids, csv_last_id = _load_ids_from_csv(csv_path)
+    csv_ids, csv_last_id, ordered_csv_ids = _load_ids_from_csv(csv_path)
     if csv_ids:
         processed.update(csv_ids)
 
@@ -109,20 +163,28 @@ def load_cache(
             last_id = csv_last_id
             last_signature = ""
 
+    jsonl_last_id, jsonl_signature = _load_last_signature_from_jsonl(jsonl_path)
+    if jsonl_last_id:
+        processed.add(jsonl_last_id)
+        if not last_id:
+            last_id = jsonl_last_id
+        if jsonl_last_id == last_id:
+            last_signature = jsonl_signature or last_signature
+
     if last_id and last_id not in processed:
         processed.add(last_id)
 
     previous_id = ""
-    ordered_ids: Tuple[str, ...] = tuple(raw_ids)
-    if last_id and raw_ids:
+    ordered_ids: Tuple[str, ...] = ordered_csv_ids or tuple(raw_ids)
+    if last_id and ordered_ids:
         try:
-            idx = raw_ids.index(last_id)
+            idx = ordered_ids.index(last_id)
         except ValueError:
-            if len(raw_ids) >= 2:
-                previous_id = raw_ids[-2]
+            if len(ordered_ids) >= 2:
+                previous_id = ordered_ids[-2]
         else:
             if idx > 0:
-                previous_id = raw_ids[idx - 1]
+                previous_id = ordered_ids[idx - 1]
 
     return CacheState(
         processed_ids=processed,
@@ -144,7 +206,7 @@ def save_cache(
     ids = set(processed_ids)
     if last_id:
         ids.add(last_id)
-
+    
     ordered_ids = sorted(ids)
     if last_id:
         try:

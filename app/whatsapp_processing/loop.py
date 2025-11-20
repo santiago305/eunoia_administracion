@@ -3,15 +3,17 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 
 from playwright.async_api import Locator, Page
 
-from .cache import ProcessedIds, save_cache
+from .cache import ProcessedIds
 from .constants import POLL_SECONDS, SLOW_AFTER_SCROLL_MS
 from .containers import get_messages_container
 from .processing import process_visible_top_to_bottom
 from .scrolling import scroll_to_last_processed, scroll_to_very_top
 
+logger = logging.getLogger(__name__)
 
 async def _prepare_messages_container(page: Page) -> Locator:
     """Garantiza que el contenedor de mensajes esté listo para interactuar."""

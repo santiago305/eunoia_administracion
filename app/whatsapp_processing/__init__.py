@@ -1,6 +1,5 @@
 """Herramientas asincrónicas para capturar comprobantes desde WhatsApp Web."""
 from .cache import CacheState, load_cache, save_cache
-from .cache import load_cache, save_cache
 from .constants import CHAT_NAME
 from .csv_export import append_csv, init_csv
 from .directories import ensure_directories
