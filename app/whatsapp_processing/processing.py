@@ -134,6 +134,16 @@ async def process_visible_top_to_bottom(
             continue
 
         signature = _build_signature(parsed)
+        if parsed["data_id"] in processed_ids:
+            if verbose_print:
+                print(
+                    f"⚠️ Se detectó un ID ya registrado ({parsed['data_id']}); se omite el guardado."
+                )
+            last_id = parsed["data_id"]
+            last_signature = signature
+            has_seen_last = True
+            continue
+        
         if last_signature and signature == last_signature and (
             not last_id or data_id == last_id
         ):
