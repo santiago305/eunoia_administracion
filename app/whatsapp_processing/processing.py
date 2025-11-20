@@ -15,7 +15,7 @@ from .jsonl_export import append_jsonl
 from .media import download_from_blob, strict_has_blob_img_inside_copyable
 from .parsing import get_text_fields
 from .text_blocks import extract_timestamp_and_sender, get_text_block
-from .iteration import iter_message_elements
+from .containers import message_rows
 
 
 async def process_message_strict(page: Page, message: Locator) -> Dict[str, str] | None:
@@ -92,8 +92,19 @@ async def process_visible_top_to_bottom(
     if not skip_until_last:
         has_seen_last = True
 
-    elements = await iter_message_elements(page)
-    for element in elements:
+    rows = message_rows(page)
+    index = 0
+    while True:
+        try:
+            total = await rows.count()
+        except Exception:
+            break
+
+        if total == 0 or index >= total:
+            break
+
+        element = rows.nth(index)
+        index += 1
         try:
             data_id = await element.get_attribute("data-id") or ""
         except Exception:
@@ -164,6 +175,14 @@ async def process_visible_top_to_bottom(
         new_count += 1
 
         await page.wait_for_timeout(SLOW_PER_MESSAGE_MS)
+
+        try:
+            if index < total:
+                await rows.nth(index).scroll_into_view_if_needed(timeout=1_500)
+        except Exception:  # pragma: no cover - depende de la UI
+            pass
+
+    return new_count, last_id, last_signature
 
     return new_count, last_id, last_signature
 

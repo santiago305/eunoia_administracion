@@ -38,6 +38,15 @@ class DummyPage:
     async def wait_for_timeout(self, value):
         self.timeouts.append(value)
 
+class DummyRows:
+    def __init__(self, elements):
+        self._elements = elements
+
+    async def count(self):
+        return len(self._elements)
+
+    def nth(self, index):
+        return self._elements[index]
 
 async def _run_process(elements, monkeypatch, processor):
     page = DummyPage()
@@ -45,10 +54,9 @@ async def _run_process(elements, monkeypatch, processor):
     last_id = ""
     last_signature = ""
 
-    async def fake_iter_message_elements(page):
-        return elements
+    dummy_rows = DummyRows(elements)
 
-    monkeypatch.setattr(processing, "iter_message_elements", fake_iter_message_elements)
+    monkeypatch.setattr(processing, "message_rows", lambda page: dummy_rows)
     monkeypatch.setattr(processing, "append_csv", lambda payload: None)
     monkeypatch.setattr(processing, "append_jsonl", lambda payload: None)
     monkeypatch.setattr(processing, "process_message_strict", processor)
