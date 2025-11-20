@@ -175,9 +175,26 @@ async def monitor_conversation(
     else:
         print("ℹ️ No se encontró un último ID tras el barrido inicial para reubicar.")
 
-    await page.wait_for_timeout(2_000)
+     # 4) Mantener la escucha en la posición actual sin reprocesar IDs previos.
+    while True:
+        await page.wait_for_timeout(int(POLL_SECONDS * 1_000))
 
-    return last_id
+        if await _needs_scroll_to_bottom(page, last_id):
+            await scroll_to_last_processed(page, last_id)
+
+        new_count, last_id, last_signature = await process_visible_top_to_bottom(
+            page,
+            processed_ids,
+            last_id,
+            last_signature,
+            verbose_print=verbose_print,
+        )
+
+        if not new_count:
+            continue
+
+        if last_id:
+            print(f"🎯 Continúa la captura desde el ID {last_id} sin retroceder.")
 
 
 __all__ = ["monitor_conversation"]
