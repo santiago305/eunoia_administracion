@@ -140,13 +140,14 @@ async def monitor_conversation(
         print("⚠️ No tenemos un ID de búsqueda en caché (svc). Se partirá desde el inicio.")
         await scroll_to_very_top(page)
     else:
-        # 1) Reubicación en el último mensaje procesado.
+         # 1) Reubicación en el último mensaje procesado.
         #    Mantiene el punto de partida cuando hay datos en caché para
         #    evitar re-procesar la conversación completa tras una desconexión.
         print(f"🔎 Intentando reubicar el ID de búsqueda: {last_id}")
         await scroll_to_last_processed(page, last_id)
+        pass
 
-    # 2) Barrido inicial y guardado de mensajes visibles.
+     # 2) Barrido inicial y guardado de mensajes visibles.
     #    Se recorre la ventana actual de mensajes desde el inicio hacia abajo para
     #    procesar y registrar cualquier mensaje que aún no esté en caché. La
     #    función devuelve el conteo de mensajes nuevos (ignoramos el valor), el
@@ -165,44 +166,41 @@ async def monitor_conversation(
     #    reanudar desde el mismo lugar sin re-trabajar mensajes ya vistos
     # save_cache(processed_ids, last_id, last_signature)
 
-    # 3) Reposicionamiento final en el último mensaje procesado sin activar el bucle
-    #    de sondeo continuo. Se muestra el mensaje de conexión y se deja la vista
-    #    detenida en el último punto conocido.
-    print("🔄 Conectado. Escuchando nuevos mensajes... (Ctrl+C para salir)")
-    if last_id:
-        print(f"🎯 Reposicionando para continuar desde el ID {last_id}...")
-        await scroll_to_last_processed(page, last_id)
-    else:
-        print("ℹ️ No se encontró un último ID tras el barrido inicial para reubicar.")
+    # 3) Desconexión temporal: monitoreo continuo de nuevos mensajes y desplazamiento.
+    # print("🔄 Conectado. Escuchando nuevos mensajes... (Ctrl+C para salir)")
+    #
+    # try:
+    #     while True:
+    #         while True:
+    #             await _prepare_messages_container(page)
+    #
+    #             if last_id and await _needs_scroll_to_bottom(page, last_id):
+    #                 await page.keyboard.press("End")
+    #                 await page.wait_for_timeout(SLOW_AFTER_SCROLL_MS)
+    #                 await _prepare_messages_container(page)
+    #
+    #             print("🔍 Buscando mensajes nuevos...")
+    #             new_count, last_id, last_signature = await process_visible_top_to_bottom(
+    #                 page,
+    #                 processed_ids,
+    #                 last_id,
+    #                 last_signature,
+    #                 verbose_print=verbose_print,
+    #             )
+    #             if not new_count:
+    #                 break
+    #
+    #             save_cache(processed_ids, last_id, last_signature)
+    #
+    #         await asyncio.sleep(POLL_SECONDS)
+    # finally:
+    #     save_cache(processed_ids, last_id, last_signature)
 
-    # 4) Mantener la escucha en la posición actual sin reprocesar IDs previos.
-    while True:
-        try:
-            await page.wait_for_timeout(int(POLL_SECONDS * 1_000))
+    print(
+        "🔌 Captura pausada: solo se abre el chat y se desplaza al inicio cuando no hay datos guardados."
+    )
 
-            if await _needs_scroll_to_bottom(page, last_id):
-                await scroll_to_last_processed(page, last_id)
-
-            new_count, last_id, last_signature = await process_visible_top_to_bottom(
-                page,
-                processed_ids,
-                last_id,
-                last_signature,
-                verbose_print=verbose_print,
-            )
-
-            if not new_count:
-                continue
-
-            if last_id:
-                print(f"🎯 Continúa la captura desde el ID {last_id} sin retroceder.")
-        except asyncio.CancelledError:
-            raise
-        except Exception:
-            logger.exception(
-                "Error durante la escucha continua. Se reintentará en %.1f segundos.",
-                POLL_SECONDS,
-            )
+    return last_id
 
 
 __all__ = ["monitor_conversation"]
