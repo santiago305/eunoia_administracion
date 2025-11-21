@@ -5,3 +5,6 @@ numpy>=1.26
 python-dotenv>=1.0
 requests>=2.32
 pytest>=7.4
+opencv-python
+pytesseract
+pillow
