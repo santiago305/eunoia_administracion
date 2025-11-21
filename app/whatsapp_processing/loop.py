@@ -7,7 +7,7 @@ import logging
 
 from playwright.async_api import Locator, Page
 
-from .cache import ProcessedIds
+from .cache import ProcessedIds, save_cache
 from .constants import POLL_SECONDS, SLOW_AFTER_SCROLL_MS
 from .containers import get_messages_container
 from .processing import process_visible_top_to_bottom
@@ -164,9 +164,34 @@ async def monitor_conversation(
     #    punto de control para que, si la sesión se interrumpe, el sistema pueda
     #    reanudar desde el mismo lugar sin re-trabajar mensajes ya vistos
 
-    print(
-        "🔌 Captura pausada: solo se abre el chat y se desplaza al inicio cuando no hay datos guardados."
-    )
+    print("🔄 Conectado. Escuchando nuevos mensajes... (Ctrl+C para salir)")
+
+    try:
+        while True:
+            await _prepare_messages_container(page)
+
+            if await _needs_scroll_to_bottom(page, last_id):
+                await scroll_to_last_processed(page, last_id)
+                try:
+                    await page.keyboard.press("End")
+                except Exception:  # pragma: no cover - depende del estado del DOM
+                    pass
+                await page.wait_for_timeout(SLOW_AFTER_SCROLL_MS)
+
+            new_count, last_id, last_signature = await process_visible_top_to_bottom(
+                page,
+                processed_ids,
+                last_id,
+                last_signature,
+                verbose_print=verbose_print,
+            )
+
+            if new_count or last_id:
+                save_cache(processed_ids, last_id, last_signature)
+
+            await asyncio.sleep(POLL_SECONDS)
+    finally:
+        save_cache(processed_ids, last_id, last_signature)
 
     return last_id
 
