@@ -112,7 +112,13 @@ async def process_visible_top_to_bottom(
         if not data_id:
             continue
 
-        if skip_until_last and not has_seen_last and data_id != last_id:
+        if data_id == last_id:
+            has_seen_last = True
+            if data_id not in processed_ids:
+                processed_ids.add(data_id)
+            continue
+
+        if skip_until_last and not has_seen_last:
             if data_id not in processed_ids:
                 processed_ids.add(data_id)
             continue
@@ -143,7 +149,7 @@ async def process_visible_top_to_bottom(
             last_signature = signature
             has_seen_last = True
             continue
-        
+
         if last_signature and signature == last_signature and (
             not last_id or data_id == last_id
         ):
