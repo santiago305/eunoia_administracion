@@ -1,10 +1,36 @@
+"""
+OCR premium para comprobantes bancarios borrosos.
+pip install opencv-python pillow pytesseract easyocr numpy torch torchvision transformers
+
+Incluye:
+- Preprocesamiento fuerte (deskew, upscale, filtrado).
+- Múltiples motores OCR: Tesseract, EasyOCR y opcionalmente TrOCR (Transformers).
+- Fusión de resultados para extraer Monto y Número de Operación lo mejor posible.
+
+Requisitos recomendados (requirements.txt):
+
+opencv-python
+pillow
+pytesseract
+easyocr
+numpy
+torch
+torchvision
+transformers
+
+NOTA:
+- EasyOCR y TrOCR se usan solo si están instalados. Si no, el script sigue trabajando con Tesseract.
+- Para TrOCR se descargará el modelo "microsoft/trocr-base-printed" la primera vez (requiere internet).
+"""
+
 import os
 import re
 import cv2
 import pytesseract
+import numpy as np
 from PIL import Image
 
-# ========== CONFIGURACIÓN GENERAL ==========
+# ======== CONFIGURACIÓN GENERAL ========
 
 # SOLO en Windows: si tesseract no está en el PATH, descomenta esta línea
 # y coloca la ruta donde se instaló tesseract.exe
@@ -13,26 +39,100 @@ from PIL import Image
 # Carpeta por defecto donde se guardan las imágenes de comprobantes
 CARPETA_COMPROBANTES = r"C:\proyectos-finales\eunoia_administracion\outputs\images"
 
-# Config por defecto de Tesseract
-OCR_CONFIG = "--oem 3 --psm 6"  # motor LSTM + bloque de texto "normal"
+# Configs avanzadas de Tesseract
+OCR_CONFIG_TEXTO = "--oem 3 --psm 6 -c preserve_interword_spaces=1"
+OCR_CONFIG_NUMEROS = "--oem 3 --psm 7 -c tessedit_char_whitelist=0123456789.,:/-"
+
+# Flags para motores opcionales
+HAS_EASYOCR = False
+HAS_TROCR = False
+easyocr_reader = None
+trocr_processor = None
+trocr_model = None
+
+# ======== INTENTAR CARGAR EASYOCR ========
+
+try:
+    import easyocr  # type: ignore
+    HAS_EASYOCR = True
+    # Inicializamos una sola vez (es pesado)
+    easyocr_reader = easyocr.Reader(['es', 'en'])
+except Exception:
+    HAS_EASYOCR = False
+
+# ======== INTENTAR CARGAR TrOCR (Transformers) ========
+
+try:
+    from transformers import TrOCRProcessor, VisionEncoderDecoderModel  # type: ignore
+    HAS_TROCR = True
+except Exception:
+    HAS_TROCR = False
+    TrOCRProcessor = None
+    VisionEncoderDecoderModel = None
 
 
-# ========== 1. OCR + PREPROCESAMIENTO ==========
+# ======== PREPROCESAMIENTO AVANZADO ========
 
-def _mejorar_imagen(img):
-    """Aplica una serie de mejoras a la imagen para ayudar al OCR."""
+def deskew_image(gray: np.ndarray) -> np.ndarray:
+    """
+    Intenta corregir la inclinación del texto en una imagen en escala de grises.
+    Si algo sale mal, devuelve la original.
+    """
+    try:
+        # Binarizar para encontrar pixeles de texto
+        _, bw = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        # Invertir: texto blanco sobre fondo negro
+        bw_inv = cv2.bitwise_not(bw)
+        coords = np.column_stack(np.where(bw_inv > 0))
+        if coords.size == 0:
+            return gray
+        angle = cv2.minAreaRect(coords)[-1]
+        # Ajustar ángulo
+        if angle < -45:
+            angle = -(90 + angle)
+        else:
+            angle = -angle
+
+        (h, w) = gray.shape[:2]
+        center = (w // 2, h // 2)
+        M = cv2.getRotationMatrix2D(center, angle, 1.0)
+        rotated = cv2.warpAffine(gray, M, (w, h), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE)
+        return rotated
+    except Exception:
+        return gray
+
+
+def mejorar_imagen(img: np.ndarray) -> np.ndarray:
+    """
+    Preprocesamiento fuerte:
+    - Escala de grises
+    - Deskew
+    - Upscale x2.5
+    - Filtro bilateral (reduce ruido sin perder bordes)
+    - Sharpen ligero
+    - Umbralización adaptativa
+    """
     # Escala de grises
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
-    # Aumentar tamaño (Tesseract lee mejor texto grande)
+    # Corregir inclinación
+    gray = deskew_image(gray)
+
+    # Upscale
     h, w = gray.shape
-    scale = 2.0
-    gray = cv2.resize(gray, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_CUBIC)
+    scale = 2.5
+    gray = cv2.resize(gray, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_LANCZOS4)
 
-    # Suavizar un poco para reducir ruido
-    gray = cv2.medianBlur(gray, 3)
+    # Filtro bilateral (suaviza ruido, preserva bordes)
+    gray = cv2.bilateralFilter(gray, d=9, sigmaColor=75, sigmaSpace=75)
 
-    # Umbralización adaptativa (mejor que un umbral fijo)
+    # Sharpen (enfocar ligeramente)
+    kernel_sharp = np.array([[0, -1, 0],
+                             [-1, 5, -1],
+                             [0, -1, 0]])
+    gray = cv2.filter2D(gray, -1, kernel_sharp)
+
+    # Umbralización adaptativa
     thresh = cv2.adaptiveThreshold(
         gray,
         255,
@@ -45,40 +145,120 @@ def _mejorar_imagen(img):
     return thresh
 
 
-def _ocr_pil(pil_img):
-    """
-    Ejecuta Tesseract con config mejorada.
-    Intenta primero con español ('spa'); si no está instalado, cae a config sin idioma.
-    """
+# ======== OCR CON DIFERENTES MOTORES ========
+
+def ocr_tesseract_texto(pil_img: Image.Image) -> str:
+    """OCR general usando Tesseract (texto completo)."""
     try:
-        texto = pytesseract.image_to_string(pil_img, lang="spa", config=OCR_CONFIG)
+        texto = pytesseract.image_to_string(pil_img, lang="spa", config=OCR_CONFIG_TEXTO)
     except pytesseract.TesseractError:
-        texto = pytesseract.image_to_string(pil_img, config=OCR_CONFIG)
+        texto = pytesseract.image_to_string(pil_img, config=OCR_CONFIG_TEXTO)
     return texto
 
 
-def ocr_preprocesar_ruta(ruta_imagen: str) -> str:
-    """
-    Lee una imagen de comprobante, aplica preprocesamiento agresivo
-    y devuelve el texto OCR resultante.
-    """
-    img = cv2.imread(ruta_imagen)
+def ocr_tesseract_numeros(pil_img: Image.Image) -> str:
+    """OCR especializado en números (monto y códigos)."""
+    try:
+        texto = pytesseract.image_to_string(pil_img, lang="spa", config=OCR_CONFIG_NUMEROS)
+    except pytesseract.TesseractError:
+        texto = pytesseract.image_to_string(pil_img, config=OCR_CONFIG_NUMEROS)
+    return texto
 
-    if img is None:
-        print(f"[ADVERTENCIA] No se pudo leer la imagen: {ruta_imagen}")
+
+def ocr_easyocr_img(img_bgr: np.ndarray) -> str:
+    """OCR con EasyOCR (si está disponible)."""
+    if not HAS_EASYOCR or easyocr_reader is None:
+        return ""
+    img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
+    try:
+        resultados = easyocr_reader.readtext(img_rgb, detail=0, paragraph=True)
+        return "\n".join(resultados)
+    except Exception:
         return ""
 
-    procesada = _mejorar_imagen(img)
 
-    # Convertir a PIL para pytesseract
-    pil_img = Image.fromarray(procesada)
+def cargar_trocr():
+    """Carga perezosa de TrOCR para no demorar si no se usa."""
+    global trocr_processor, trocr_model
+    from transformers import TrOCRProcessor, VisionEncoderDecoderModel  # type: ignore
+    trocr_processor = TrOCRProcessor.from_pretrained("microsoft/trocr-base-printed")
+    trocr_model = VisionEncoderDecoderModel.from_pretrained("microsoft/trocr-base-printed")
 
-    # Extraer texto
-    texto = _ocr_pil(pil_img)
-    return texto
+
+def ocr_trocr_pil(pil_img: Image.Image) -> str:
+    """
+    OCR con TrOCR (modelo Transformer de Microsoft).
+    Está pensado para líneas / bloques de texto,
+    pero igual puede ayudar como fuente extra.
+    """
+    if not HAS_TROCR:
+        return ""
+    try:
+        import torch  # type: ignore
+        global trocr_processor, trocr_model
+        if trocr_processor is None or trocr_model is None:
+            cargar_trocr()
+
+        pixel_values = trocr_processor(images=pil_img, return_tensors="pt").pixel_values
+        with torch.no_grad():
+            generated_ids = trocr_model.generate(pixel_values, max_length=256)
+        texto = trocr_processor.batch_decode(generated_ids, skip_special_tokens=True)[0]
+        return texto
+    except Exception:
+        return ""
 
 
-# ========== 2. HELPERS GENERALES ==========
+def ocr_multi(ruta_imagen: str):
+    """
+    Aplica múltiples OCR sobre la misma imagen:
+    - Tesseract (texto general)
+    - Tesseract (numérico)
+    - EasyOCR (si está)
+    - TrOCR (si está)
+    Devuelve una lista de textos.
+    """
+    img = cv2.imread(ruta_imagen)
+    if img is None:
+        print(f"[ADVERTENCIA] No se pudo leer la imagen: {ruta_imagen}")
+        return []
+
+    procesada = mejorar_imagen(img)
+    pil_procesada = Image.fromarray(procesada)
+
+    textos = []
+
+    # Tesseract texto general
+    t_texto = ocr_tesseract_texto(pil_procesada)
+    if t_texto.strip():
+        textos.append(("tesseract_texto", t_texto))
+
+    # Tesseract numérico
+    t_num = ocr_tesseract_numeros(pil_procesada)
+    if t_num.strip():
+        textos.append(("tesseract_numeros", t_num))
+
+    # EasyOCR
+    if HAS_EASYOCR:
+        e_texto = ocr_easyocr_img(img)
+        if e_texto.strip():
+            textos.append(("easyocr", e_texto))
+
+    # TrOCR sobre una versión reducida
+    if HAS_TROCR:
+        pil_small = pil_procesada.copy()
+        max_side = 1024
+        w, h = pil_small.size
+        scale = min(max_side / max(w, h), 1.0)
+        if scale < 1.0:
+            pil_small = pil_small.resize((int(w * scale), int(h * scale)), Image.LANCZOS)
+        tr_texto = ocr_trocr_pil(pil_small)
+        if tr_texto.strip():
+            textos.append(("trocr", tr_texto))
+
+    return textos
+
+
+# ======== HELPERS DE NORMALIZACIÓN Y PARSEO ========
 
 def normalizar(texto: str) -> str:
     """Pasa a minúsculas y quita tildes para comparar más fácil."""
@@ -96,7 +276,7 @@ def normalizar(texto: str) -> str:
     return texto
 
 
-def _extraer_numeros_monto(linea: str):
+def extraer_numeros_monto(linea: str):
     """
     Devuelve una lista de posibles montos (como string) encontrados en la línea.
     Soporta formatos como:
@@ -104,50 +284,36 @@ def _extraer_numeros_monto(linea: str):
     - 1,234.56
     - 1234,56
     """
-    # Reemplazar comas por puntos si parecen ser decimales
-    # Primero capturamos patrones con coma o punto
     patron = r"[0-9][0-9\.,]*[0-9]"
     matches = re.findall(patron, linea)
     candidatos = []
     for m in matches:
-        # Limpieza básica
         limpio = m.replace(" ", "")
-        # Normalizar separador decimal a punto:
-        # si tiene tanto "." como "," -> asumimos que "," es decimal
         if "," in limpio and "." in limpio:
             limpio = limpio.replace(".", "").replace(",", ".")
         elif "," in limpio and "." not in limpio:
             limpio = limpio.replace(",", ".")
-        # descartar cosas muy raras
         if len(limpio) >= 3:
             candidatos.append(limpio)
     return candidatos
 
 
-# ========== 3. EXTRAER MONTO ==========
-
-def extraer_monto(texto: str):
+def extraer_monto_desde_texto(texto: str):
     """
-    Busca el monto principal:
-    1) Prioriza líneas con 'S/' (moneda Soles).
-    2) Si no, busca líneas con 'monto', 'importe', 'total' (y evita 'saldo', 'comision', etc.).
-    3) Dentro de esas líneas busca el número más "grande" con decimales.
+    Busca el monto principal en un solo texto.
     """
     lineas = [l.strip() for l in texto.splitlines() if l.strip()]
     candidatas = []
 
-    # 1) Líneas con S/
     for linea in lineas:
         norm = normalizar(linea)
         if "s/" in norm or "s/." in norm:
             candidatas.append(linea)
 
-    # 2) Si no hay candidatas, buscar por palabras clave
     if not candidatas:
         for linea in lineas:
             norm = normalizar(linea)
             if any(p in norm for p in ["monto", "importe", "total"]):
-                # Excluir posibles distracciones
                 if any(bad in norm for bad in ["saldo", "comision", "igv"]):
                     continue
                 candidatas.append(linea)
@@ -159,14 +325,12 @@ def extraer_monto(texto: str):
     mejor_valor = -1.0
 
     for linea in candidatas:
-        nums = _extraer_numeros_monto(linea)
+        nums = extraer_numeros_monto(linea)
         for n in nums:
             try:
                 valor = float(n)
             except ValueError:
                 continue
-            # nos quedamos con el mayor valor encontrado,
-            # asumiendo que el total suele ser el mayor
             if valor > mejor_valor:
                 mejor_valor = valor
                 mejor_monto = n
@@ -174,14 +338,9 @@ def extraer_monto(texto: str):
     return mejor_monto
 
 
-# ========== 4. EXTRAER NÚMERO DE OPERACIÓN ==========
-
-def extraer_numero_operacion(texto: str):
+def extraer_numero_operacion_desde_texto(texto: str):
     """
-    Busca el número de operación:
-    - Lineas con 'nro. de operación', 'numero de operacion',
-      'codigo de operacion', etc.
-    - Dentro de esas líneas toma el número más largo (>= 6 dígitos).
+    Busca el número de operación en un solo texto.
     """
     lineas = [l.strip() for l in texto.splitlines() if l.strip()]
     claves = [
@@ -209,16 +368,14 @@ def extraer_numero_operacion(texto: str):
     for linea in lineas:
         norm = normalizar(linea)
         if any(cl in norm for cl in claves):
-            # buscar secuencias de 6+ dígitos
             numeros = re.findall(r"\d{6,}", linea)
             for num in numeros:
                 if len(num) > mejor_longitud:
                     mejor_longitud = len(num)
                     mejor_candidato = num
 
-    # fallback: si no encontró en líneas con clave, buscar en últimas líneas del texto
     if not mejor_candidato:
-        ultimas = lineas[-5:]  # miramos las 5 últimas
+        ultimas = lineas[-5:]
         for linea in ultimas:
             numeros = re.findall(r"\d{6,}", linea)
             for num in numeros:
@@ -229,51 +386,96 @@ def extraer_numero_operacion(texto: str):
     return mejor_candidato
 
 
-# ========== 5. PROCESAR UN SOLO COMPROBANTE ==========
+# ======== FUSIÓN DE RESULTADOS ========
 
-def procesar_comprobante(ruta_imagen: str):
+def elegir_mejor_monto(textos_ocr):
     """
-    Procesa una sola imagen de comprobante:
-    - Aplica OCR
-    - Extrae monto
-    - Extrae número de operación
+    Recibe una lista de (motor, texto) y decide el mejor monto:
+    - Cuenta cuántas veces se repite cada monto.
+    - Si empatan, se queda con el de mayor valor numérico.
     """
-    print(f"Procesando: {ruta_imagen}")
-    texto = ocr_preprocesar_ruta(ruta_imagen)
-    if not texto:
+    conteo = {}
+    valores = {}
+
+    for source, texto in textos_ocr:
+        monto = extraer_monto_desde_texto(texto)
+        if not monto:
+            continue
+        clave = monto
+        conteo[clave] = conteo.get(clave, 0) + 1
+        try:
+            valor = float(monto)
+        except ValueError:
+            valor = -1.0
+        valores[clave] = valor
+
+    if not conteo:
+        return None
+
+    mejor = sorted(conteo.keys(), key=lambda m: (conteo[m], valores.get(m, -1.0)), reverse=True)[0]
+    return mejor
+
+
+def elegir_mejor_numero_operacion(textos_ocr):
+    """
+    Igual que para el monto, pero con número de operación.
+    """
+    conteo = {}
+    longitudes = {}
+
+    for source, texto in textos_ocr:
+        num = extraer_numero_operacion_desde_texto(texto)
+        if not num:
+            continue
+        clave = num
+        conteo[clave] = conteo.get(clave, 0) + 1
+        longitudes[clave] = len(num)
+
+    if not conteo:
+        return None
+
+    mejor = sorted(conteo.keys(), key=lambda n: (conteo[n], longitudes.get(n, 0)), reverse=True)[0]
+    return mejor
+
+
+# ======== PROCESAR UN SOLO COMPROBANTE ========
+
+def procesar_comprobante_premium(ruta_imagen: str):
+    """
+    Procesa una sola imagen de comprobante con OCR premium.
+    """
+    print(f"Procesando (premium): {ruta_imagen}")
+    textos_ocr = ocr_multi(ruta_imagen)
+    if not textos_ocr:
         print("   [ERROR] No se obtuvo texto del OCR.")
         return {
             "ruta": ruta_imagen,
-            "texto": "",
+            "textos_ocr": [],
             "monto": None,
             "numero_operacion": None,
         }
 
-    monto = extraer_monto(texto)
-    numero_operacion = extraer_numero_operacion(texto)
+    monto = elegir_mejor_monto(textos_ocr)
+    numero_operacion = elegir_mejor_numero_operacion(textos_ocr)
 
     data = {
         "ruta": ruta_imagen,
-        "texto": texto,
+        "textos_ocr": textos_ocr,
         "monto": monto,
         "numero_operacion": numero_operacion,
     }
 
-    print(f"   Monto            : {monto}")
-    print(f"   Número operación : {numero_operacion}")
+    print(f"   Motores usados    : {[s for s, _ in textos_ocr]}")
+    print(f"   Monto elegido     : {monto}")
+    print(f"   Número operación  : {numero_operacion}")
     return data
 
 
-# ========== 6. PROCESAR UNA CARPETA COMPLETA ==========
+# ======== PROCESAR CARPETA COMPLETA ========
 
-def procesar_carpeta(ruta_carpeta: str):
+def procesar_carpeta_premium(ruta_carpeta: str):
     """
-    Procesa todas las imágenes .png/.jpg/.jpeg de una carpeta.
-    Devuelve una lista de diccionarios con:
-    - ruta
-    - texto
-    - monto
-    - numero_operacion
+    Procesa todas las imágenes de una carpeta con el pipeline premium.
     """
     resultados = []
 
@@ -288,19 +490,21 @@ def procesar_carpeta(ruta_carpeta: str):
             continue
 
         ruta = os.path.join(ruta_carpeta, nombre)
-        info = procesar_comprobante(ruta)
+        info = procesar_comprobante_premium(ruta)
         resultados.append(info)
 
     return resultados
 
 
-# ========== 7. PUNTO DE ENTRADA ==========
+# ======== MAIN ========
 
 if __name__ == "__main__":
-    print("=== OCR de comprobantes (monto + número de operación) ===")
+    print("=== OCR PREMIUM de comprobantes (monto + número de operación) ===")
     print(f"Carpeta configurada: {CARPETA_COMPROBANTES}")
+    print(f"EasyOCR disponible : {HAS_EASYOCR}")
+    print(f"TrOCR disponible   : {HAS_TROCR}")
 
-    resultados = procesar_carpeta(CARPETA_COMPROBANTES)
+    resultados = procesar_carpeta_premium(CARPETA_COMPROBANTES)
 
     print("\n=== Resumen final ===")
     for r in resultados:
@@ -308,3 +512,4 @@ if __name__ == "__main__":
         print(f"Archivo          : {r['ruta']}")
         print(f"Monto            : {r['monto']}")
         print(f"Número operación : {r['numero_operacion']}")
+        print(f" Motores usados  : {[s for s, _ in r['textos_ocr']]}")
