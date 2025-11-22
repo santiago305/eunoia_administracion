@@ -81,7 +81,9 @@ def _cargar_trocr():
     if TrOCRProcessor is None or VisionEncoderDecoderModel is None:
         return
     if trocr_processor is None or trocr_model is None:
-        trocr_processor = TrOCRProcessor.from_pretrained("microsoft/trocr-base-printed")
+        trocr_processor = TrOCRProcessor.from_pretrained(
+            "microsoft/trocr-base-printed", use_fast=True
+        )
         trocr_model = VisionEncoderDecoderModel.from_pretrained("microsoft/trocr-base-printed")
 
 def ocr_trocr_pil(pil_img: Image.Image) -> str:

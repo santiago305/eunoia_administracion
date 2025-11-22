@@ -181,7 +181,9 @@ def cargar_trocr():
     """Carga perezosa de TrOCR para no demorar si no se usa."""
     global trocr_processor, trocr_model
     from transformers import TrOCRProcessor, VisionEncoderDecoderModel  # type: ignore
-    trocr_processor = TrOCRProcessor.from_pretrained("microsoft/trocr-base-printed")
+    trocr_processor = TrOCRProcessor.from_pretrained(
+        "microsoft/trocr-base-printed", use_fast=True
+    )
     trocr_model = VisionEncoderDecoderModel.from_pretrained("microsoft/trocr-base-printed")
 
 
