@@ -2,3 +2,4 @@ __pycache__*
 .env
 .venv
 outputs/images/
+sheets/eunoia.json
