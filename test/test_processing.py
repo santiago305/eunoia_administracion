@@ -59,6 +59,7 @@ async def _run_process(elements, monkeypatch, processor):
     monkeypatch.setattr(processing, "message_rows", lambda page: dummy_rows)
     monkeypatch.setattr(processing, "append_csv", lambda payload: None)
     monkeypatch.setattr(processing, "append_jsonl", lambda payload: None)
+    monkeypatch.setattr(processing, "export_to_sheets", lambda payload: None)
     monkeypatch.setattr(processing, "process_message_strict", processor)
 
     return await processing.process_visible_top_to_bottom(

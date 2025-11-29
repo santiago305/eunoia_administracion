@@ -176,7 +176,7 @@ def load_cache(
 
     previous_id = ""
     ordered_ids: Tuple[str, ...] = ordered_csv_ids or tuple(raw_ids)
-    if last_id and ordered_ids:
+    if last_id and ordered_ids and raw_ids:
         try:
             idx = ordered_ids.index(last_id)
         except ValueError:

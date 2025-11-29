@@ -14,6 +14,7 @@ from .csv_export import append_csv
 from .jsonl_export import append_jsonl
 from .media import download_from_blob, strict_has_blob_img_inside_copyable
 from .parsing import get_text_fields
+from .sheets_export import export_to_sheets
 from .text_blocks import extract_timestamp_and_sender, get_text_block
 from .containers import message_rows
 
@@ -168,6 +169,11 @@ async def process_visible_top_to_bottom(
 
         append_csv(parsed)
         append_jsonl(parsed)
+        try:
+            export_to_sheets(parsed)
+        except Exception:
+            if verbose_print:
+                print("⚠️ No se pudo registrar en Google Sheets.")
 
         processed_ids.add(parsed["data_id"])
         last_id = parsed["data_id"]
