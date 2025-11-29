@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from datetime import datetime
 from typing import Any, Mapping
@@ -35,6 +36,7 @@ PAYMENT_METHOD_ALIASES = {
 }
 DEFAULT_STATE = "REALIZADO"
 
+logger = logging.getLogger(__name__)
 
 def _normalize_year(raw_year: str) -> int | None:
     try:
@@ -119,7 +121,7 @@ def export_to_sheets(parsed: Mapping[str, str]) -> bool:
     if worksheet is None:
         return False
 
-    return registrar_movimiento(
+    success = registrar_movimiento(
         worksheet,
         payload["mes"],
         payload["fecha"],
@@ -131,6 +133,17 @@ def export_to_sheets(parsed: Mapping[str, str]) -> bool:
         ingresos=payload["ingresos"],
         egresos=payload["egresos"],
     )
+
+    if success:
+        logger.info(
+            "Mensaje %s registrado en Sheets (mes=%s, fecha=%s, operacion=%s)",
+            parsed.get("data_id", ""),
+            payload["mes"],
+            payload["fecha"],
+            payload["numero_operacion"],
+        )
+
+    return success
 
 
 __all__ = ["export_to_sheets"]
