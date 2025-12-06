@@ -206,7 +206,7 @@ async def process_visible_top_to_bottom(
             print(f"  Monto      : {parsed.get('monto', '')}")
             print(f"  Operación  : {parsed.get('numero_operacion', '')}")
             print(f"  Img SRC    : {parsed.get('img_src_blob', '')}")
-            print(f"  Img File   : {parsed.get('img_file', '')}")
+            # print(f"  Img File   : {parsed.get('img_file', '')}")
         new_count += 1
 
         await page.wait_for_timeout(SLOW_PER_MESSAGE_MS)

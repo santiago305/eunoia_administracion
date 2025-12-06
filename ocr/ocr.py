@@ -3,8 +3,8 @@ import cv2
 import easyocr
 import os
 
-from amount_extractor import find_amount_from_texts
-from op_extractor import find_operation_number_from_texts
+from .amount_extractor import find_amount_from_texts
+from .op_extractor import find_operation_number_from_texts
 
 # ─────────────────────────────────────────────
 #   OCR GLOBAL (se crea una sola vez)
