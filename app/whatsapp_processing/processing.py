@@ -17,7 +17,7 @@ from .parsing import get_text_fields
 from .sheets_export import export_to_sheets
 from .text_blocks import extract_timestamp_and_sender, get_text_block
 from .containers import message_rows
-
+from ocr.ocr import extract_voucher_data
 
 async def process_message_strict(page: Page, message: Locator) -> Dict[str, str] | None:
     """Evalúa si un mensaje cumple con la estructura requerida y extrae sus datos."""
@@ -52,6 +52,17 @@ async def process_message_strict(page: Page, message: Locator) -> Dict[str, str]
         "img_file": image_path,
     }
     result.update(fields)
+
+    try:
+        ocr_amount, ocr_operation = extract_voucher_data(image_path)
+    except Exception:
+        ocr_amount, ocr_operation = None, None
+
+    if ocr_amount:
+        result["monto"] = ocr_amount
+    if ocr_operation:
+        result["numero_operacion"] = ocr_operation
+
     return result
 
 
@@ -192,6 +203,8 @@ async def process_visible_top_to_bottom(
             print(f"  Método pago: {parsed.get('Método de pago', '')}")
             print(f"  Cuenta     : {parsed.get('Cuenta', '')}")
             print(f"  Detalle    : {parsed.get('Detalle', '')}")
+            print(f"  Monto      : {parsed.get('monto', '')}")
+            print(f"  Operación  : {parsed.get('numero_operacion', '')}")
             print(f"  Img SRC    : {parsed.get('img_src_blob', '')}")
             print(f"  Img File   : {parsed.get('img_file', '')}")
         new_count += 1

@@ -38,6 +38,20 @@ DEFAULT_STATE = "REALIZADO"
 
 logger = logging.getLogger(__name__)
 
+def _parse_amount(raw: str | None) -> float | None:
+    if not raw:
+        return None
+
+    cleaned = raw.replace(" ", "").replace(",", ".")
+    match = re.search(r"(\d+(?:\.\d+)?)", cleaned)
+    if not match:
+        return None
+
+    try:
+        return float(match.group(1))
+    except ValueError:
+        return None
+    
 def _normalize_year(raw_year: str) -> int | None:
     try:
         numeric = int(raw_year)
@@ -95,7 +109,12 @@ def _build_sheet_payload(parsed: Mapping[str, str]) -> dict[str, Any] | None:
     descripcion = parsed.get("servicio_o_descripcion", "").strip()
     detalle = parsed.get("Detalle", "").strip()
     metodo_pago = _normalize_payment_method(parsed.get("Método de pago", ""))
-    numero_operacion = parsed.get("Cuenta", "").strip()
+    numero_operacion = parsed.get("numero_operacion") or parsed.get("Cuenta", "").strip()
+
+    monto = _parse_amount(parsed.get("monto"))
+    balance = (parsed.get("Balance", "") or "").lower()
+    ingresos = monto if balance == "ingreso" else None
+    egresos = monto if balance == "egreso" else None
 
     return {
         "mes": month_abbr,
@@ -105,8 +124,8 @@ def _build_sheet_payload(parsed: Mapping[str, str]) -> dict[str, Any] | None:
         "detalle": detalle,
         "metodo_pago": metodo_pago,
         "estado": DEFAULT_STATE,
-        "ingresos": None,
-        "egresos": None,
+        "ingresos": ingresos,
+        "egresos": egresos,
     }
 
 

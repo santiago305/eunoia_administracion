@@ -21,6 +21,8 @@ HEADER = [
     "Método de pago",
     "Cuenta",
     "Detalle",
+    "monto",
+    "numero_operacion",
     "img_src_blob",
     "img_src_data",
     "img_file",
