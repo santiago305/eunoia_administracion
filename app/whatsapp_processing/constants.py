@@ -12,6 +12,7 @@ IMG_DIR = OUT_DIR / "images"
 CSV_FILE = OUT_DIR / "comprobantes.csv"
 JSONL_FILE = OUT_DIR / "comprobantes.jsonl"
 CACHE_FILE = OUT_DIR / f"wa_cache_{CHAT_NAME}.json"
+LOG_FILE = OUT_DIR / "processing_errors.log"
 
 TOP_SCROLL_MAX_ROUNDS = 0
 TOP_SCROLL_PGUP_BURST = 10
@@ -69,6 +70,7 @@ __all__ = [
     "FIELD_PATTERNS",
     "IMG_DIR",
     "JSONL_FILE",
+    "LOG_FILE",
     "OUT_DIR",
     "POLL_SECONDS",
     "SLOW_AFTER_SCROLL_MS",

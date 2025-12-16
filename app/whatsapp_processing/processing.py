@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 from typing import Dict, Tuple
 from uuid import uuid4
 
 from playwright.async_api import Locator, Page
 
 from .cache import ProcessedIds
-from .constants import SLOW_PER_MESSAGE_MS
+from .constants import LOG_FILE, SLOW_PER_MESSAGE_MS
 from .csv_export import append_csv
 from .jsonl_export import append_jsonl
 from .media import download_from_blob, strict_has_blob_img_inside_copyable
@@ -17,25 +18,40 @@ from .parsing import get_text_fields
 from .sheets_export import export_to_sheets
 from .text_blocks import extract_timestamp_and_sender, get_text_block
 from .containers import message_rows
+from .directories import ensure_directories
 from ocr.ocr import extract_voucher_data
+
+
+ensure_directories()
+logger = logging.getLogger(__name__)
+if not logger.handlers:
+    handler = logging.FileHandler(LOG_FILE, encoding="utf-8")
+    formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+logger.setLevel(logging.INFO)
 
 async def process_message_strict(page: Page, message: Locator) -> Dict[str, str] | None:
     """Evalúa si un mensaje cumple con la estructura requerida y extrae sus datos."""
 
     try:
         data_id = await message.get_attribute("data-id") or ""
-    except Exception:
+    except Exception as exc:
+        logger.exception("No se pudo leer el data-id del mensaje", exc_info=exc)
         return None
     blob_element, blob_src, data_src = await strict_has_blob_img_inside_copyable(message)
     if blob_element is None or not blob_src:
+        logger.info("Se descartó un mensaje sin comprobante adjunto (data-id=%s)", data_id)
         return None
 
     full_text = await get_text_block(message)
     if not full_text:
+        logger.info("Se descartó un mensaje sin texto visible (data-id=%s)", data_id)
         return None
 
     fields = get_text_fields(full_text)
     if not fields:
+        logger.info("No se detectaron campos en el mensaje (data-id=%s)", data_id)
         return None
 
     timestamp, sender = await extract_timestamp_and_sender(message)
@@ -55,7 +71,8 @@ async def process_message_strict(page: Page, message: Locator) -> Dict[str, str]
 
     try:
         ocr_amount, ocr_operation = extract_voucher_data(image_path)
-    except Exception:
+    except Exception as exc:
+        logger.exception("No se pudo leer el comprobante con OCR (data-id=%s)", data_id, exc_info=exc)
         ocr_amount, ocr_operation = None, None
 
     if ocr_amount:
@@ -146,7 +163,8 @@ async def process_visible_top_to_bottom(
 
         try:
             parsed = await process_message_strict(page, element)
-        except Exception:
+        except Exception as exc:
+            logger.exception("Fallo al procesar mensaje (data-id=%s)", data_id, exc_info=exc)
             continue
         if not parsed:
             continue
@@ -216,8 +234,6 @@ async def process_visible_top_to_bottom(
                 await rows.nth(index).scroll_into_view_if_needed(timeout=1_500)
         except Exception:  # pragma: no cover - depende de la UI
             pass
-
-    return new_count, last_id, last_signature
 
     return new_count, last_id, last_signature
 
