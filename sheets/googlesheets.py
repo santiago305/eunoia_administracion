@@ -11,7 +11,7 @@ from gspread.exceptions import WorksheetNotFound
 
 # -------- CONFIGURACIÓN GLOBAL --------
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
-SERVICE_ACCOUNT_FILE = Path(r"C:\proyectos-finales\eunoia_administracion\sheets\eunoia.json")
+SERVICE_ACCOUNT_FILE = Path(r"C:\eunoia_administracion\sheets\eunoia.json")
 SHEET_URL = ("https://docs.google.com/spreadsheets/d/1aWa99epeIy7pZn3MaVxOy-CMsc9RQLVP3MGk1kwQeqA/edit?gid=472731081#gid=472731081")
 
 MONTH_WORKSHEET_TITLES: Dict[str, str] = {

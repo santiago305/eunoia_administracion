@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 _SEARCH_ENTRY_XPATH = "//*[@id='side']/div[1]/div/div[2]"
 _CHAT_INPUT_SELECTOR = "div[role='textbox']"
 _FIRST_RESULT_XPATH = (
-    "//*[@id='pane-side']/div[1]/div/div/div[2]/div/div/div/div[2]/div[1]/div[1]/span/span"
+    "//*[@id='pane-side']/div/div/div/div[2]/div/div/div/div[2]/div[1]/div[1]/span/span"
 )
 
 
